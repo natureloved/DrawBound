@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CreditPosition, DecisionReceipt, LoanHealthProof } from "@/lib/domain/types";
+import type { TachiReadOnlySnapshot } from "@/lib/tachi/read-only";
 
 type ProofKind = "healthy" | "unhealthy" | "stale";
 type ApiResult = { position?: CreditPosition; receipt?: DecisionReceipt; decision?: "ALLOW" | "DENY"; reason?: string; proof?: LoanHealthProof; idempotent?: boolean };
@@ -17,6 +18,9 @@ export default function Home() {
   const [amount, setAmount] = useState("100");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "allow" | "deny" | "info"; text: string } | null>(null);
+  const [tachiSnapshot, setTachiSnapshot] = useState<TachiReadOnlySnapshot | null>(null);
+  const [tachiBusy, setTachiBusy] = useState(false);
+  const [tachiError, setTachiError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [p, r] = await Promise.all([fetch("/api/positions"), fetch("/api/receipts")]);
@@ -52,6 +56,21 @@ export default function Home() {
   };
 
   const reset = async () => { await run("/api/reset"); setProofKind("healthy"); await refresh(); };
+  const checkTachi = async () => {
+    setTachiBusy(true);
+    setTachiError(null);
+    try {
+      const response = await fetch("/api/tachi/diagnostics", { cache: "no-store" });
+      const data = await response.json() as TachiReadOnlySnapshot & { error?: string; detail?: string };
+      if (!response.ok) throw new Error(data.detail ?? data.error ?? "Tachi read failed");
+      setTachiSnapshot(data);
+    } catch (error) {
+      setTachiSnapshot(null);
+      setTachiError(error instanceof Error ? error.message : "Tachi read failed");
+    } finally {
+      setTachiBusy(false);
+    }
+  };
   const proof = position?.latestProof;
   const remaining = position ? position.creditLimitUnits - position.debtUnits : 0;
   const isFresh = proof ? new Date(proof.expiresAt).getTime() > Date.now() : false;
@@ -105,6 +124,11 @@ export default function Home() {
       <section className="lower-grid">
         <article className="panel receipt-panel"><div className="panel-head"><div><p className="eyebrow">INDEPENDENT RECEIPTS</p><h2>Decision timeline</h2></div><span className="receipt-count">{receipts.length} events</span></div>{receipts.length === 0 ? <div className="empty-state">No transitions yet. The next draw will leave an inspectable receipt here.</div> : <div className="timeline">{receipts.slice(0, 5).map((receipt) => <div className="timeline-item" key={receipt.id}><div className={`timeline-dot ${receipt.result.toLowerCase()}`} /><div className="timeline-content"><div className="timeline-title"><strong>{receipt.action}</strong><span className={`result ${receipt.result.toLowerCase()}`}>{receipt.result}</span><time>{formatDate(receipt.createdAt)}</time></div><p>{receipt.reason}</p><div className="receipt-meta"><code>{receipt.proofDigest ? `proof ${receipt.proofDigest.slice(0, 12)}...` : "no proof required"}</code>{receipt.transitionRef && <code>{receipt.transitionRef}</code>}<span className="receipt-valid">[verified]</span></div></div></div>)}</div>}</article>
         <aside className="panel guard-panel"><p className="eyebrow">GUARDRAILS</p><h2>Fail closed by design</h2><div className="guard-list"><div><span className="guard-check">+</span><span>Signet writes only</span><strong>ACTIVE</strong></div><div><span className="guard-check">+</span><span>Max test collateral</span><strong>5,000 sats</strong></div><div><span className="guard-check">+</span><span>Proof freshness</span><strong>5 min</strong></div><div><span className="guard-check">+</span><span>Relay trust</span><strong>FIXTURE V1</strong></div></div><div className="trust-note"><span>i</span><p>Fixture mode runs the same proof and receipt contracts used by the relay path. Live Tachi package and verifier details remain unverified pending event access.</p></div></aside>
+      </section>
+      <section className="panel network-panel" aria-live="polite">
+        <div className="panel-head"><div><p className="eyebrow">TACHI / TAURUS READS</p><h2>Live network inspection</h2></div><div className="network-actions"><span className={`network-status ${tachiSnapshot ? "verified" : tachiError ? "failed" : "idle"}`}>{tachiSnapshot ? "READS VERIFIED" : tachiError ? "READ FAILED" : "NOT CHECKED"}</span><button className="ghost-button" onClick={checkTachi} disabled={tachiBusy}>{tachiBusy ? "Checking..." : "Check live status"}</button></div></div>
+        {tachiSnapshot ? <div className="network-grid"><div className="network-metric"><span>Chain</span><strong>{tachiSnapshot.node.chainId}</strong><small>{tachiSnapshot.node.syncStatus} / block {tachiSnapshot.node.latestBlockHeight.toLocaleString()}</small></div><div className="network-metric"><span>Health</span><strong>{tachiSnapshot.health.status}</strong><small>{tachiSnapshot.health.advertisedValidators} advertised validators</small></div><div className="network-metric"><span>Quorum</span><strong>{tachiSnapshot.quorum.threshold} of {tachiSnapshot.quorum.validatorCount}</strong><small>{tachiSnapshot.quorum.source} validator source</small></div><div className="network-metric"><span>Writes</span><strong className="safe-text">DISABLED</strong><small>{tachiSnapshot.policy.mode.toUpperCase()} mode / kill switch {tachiSnapshot.policy.killSwitch ? "on" : "off"}</small></div></div> : <div className="empty-state">Live reads are manual and read-only. Fixture credit transitions remain isolated from the network probe.</div>}
+        {tachiError && <p className="network-error">{tachiError}</p>}
       </section>
       <footer><span>DRAWBOUND / TACHI OP_FREEDOM</span><span>native BTC / no custodian / no bridge</span></footer>
     </main>

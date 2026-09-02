@@ -9,9 +9,9 @@ corepack pnpm install
 corepack pnpm dev
 ```
 
-Open `http://localhost:3000`. The default is deterministic `FIXTURE` mode on signet. Use the proof tabs to run the same draw request through healthy, unhealthy, and stale inputs.
+Open `http://localhost:3000`. The default is deterministic `FIXTURE` mode on signet. Use the proof tabs to run the same draw request through healthy, unhealthy, and stale inputs. Use **Check live status** to run an explicit, read-only Tachi/Taurus network inspection without changing the fixture position.
 
-The current Tachi event status, SDK, and verifier are intentionally unverified in this checkout because the official page was unavailable during the integration spike; see [docs/tachi-integration.md](docs/tachi-integration.md) before enabling live transport.
+The official Tachi SDK and Taurus vault verifier have been validated against the public Signet endpoint. The application still keeps all live financial writes disabled; fixture mode remains the only credit-transition writer until a funded, disposable Signet flow is separately approved and verified. See [docs/tachi-integration.md](docs/tachi-integration.md) before enabling live transport.
 
 ## Modes
 
@@ -22,6 +22,14 @@ The supplied Tachi docs name `@tachibtc/tachi-sdk-ts`, `@tachibtc/taurus-vault-c
 ```powershell
 corepack pnpm spike:tachi
 ```
+
+The Taurus vault derivation and Signet validator quorum can be checked without a wallet sync or transaction write:
+
+```powershell
+corepack pnpm spike:taurus
+```
+
+The dashboard's **Check live status** action calls `GET /api/tachi/diagnostics`. It reports public health, chain, validator, quorum, and write-policy metadata. Add `?vault=<p2tr-address>` to include a read-only locked-VTXO summary for a known vault address.
 
 See [docs/tachi-integration.md](docs/tachi-integration.md), [docs/threat-model.md](docs/threat-model.md), and [docs/demo-script.md](docs/demo-script.md).
 
