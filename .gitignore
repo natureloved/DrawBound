@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+coverage/
+.pnpm-store/
+tsconfig.tsbuildinfo
+
+docs/
+
+scripts/
