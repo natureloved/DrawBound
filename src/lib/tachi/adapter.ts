@@ -6,5 +6,7 @@ export interface TachiAdapter {
     action: "DRAW" | "REPAY" | "UNLOCK";
     amount: number;
     proofDigest?: string;
+    /** Required for a live (non-fixture) credit transition: a signed txHex built via the Taurus wallet. */
+    txHex?: string;
   }): Promise<{ transitionRef: string }>;
 }

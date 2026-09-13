@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getPosition, setPosition } from "@/lib/store";
 import { assertWritePolicy } from "@/lib/security/policy";
-import { FixtureTachiAdapter } from "@/lib/tachi/fixture-adapter";
+import { getTachiAdapter, isLiveMode } from "@/lib/tachi";
 
-const tachi = new FixtureTachiAdapter();
+const tachi = getTachiAdapter();
 
 export async function GET() {
-  return NextResponse.json({ position: getPosition(), adapterMode: process.env.APP_MODE || "fixture" });
+  return NextResponse.json({ position: getPosition(), adapterMode: isLiveMode() ? "live" : "fixture" });
 }
 
 export async function POST(request: Request) {
@@ -17,5 +17,5 @@ export async function POST(request: Request) {
   const current = getPosition();
   const next = { ...current, id: String(body.id || `pos_${Date.now()}`), vaultRef, collateralSats, debtUnits: 0, state: "COLLATERALIZED" as const, latestProof: undefined, exitStatus: "LOCKED" as const, drawCount: 0, nonce: 0 };
   setPosition(next);
-  return NextResponse.json({ position: getPosition(), adapterMode: "FIXTURE" });
+  return NextResponse.json({ position: getPosition(), adapterMode: isLiveMode() ? "live" : "fixture" });
 }
