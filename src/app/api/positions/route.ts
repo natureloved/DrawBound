@@ -28,7 +28,12 @@ export async function GET(request: Request) {
   if (!position && vault) position = await getPosition(positionIdForVault(vault));
 
   return NextResponse.json(
-    { position, positions, adapterMode: isLiveMode() ? "live" : "fixture" },
+    {
+      position,
+      positions,
+      adapterMode: isLiveMode() ? "live" : "fixture",
+      ownershipVerified: session?.ownershipVerified ?? null,
+    },
     { headers: { "cache-control": "no-store" } },
   );
 }

@@ -28,6 +28,10 @@ export interface Session {
   publicKey: string;
   createdAt: number;
   expiresAt: number;
+  /** True when a valid BIP-322 ownership proof was presented at connect. */
+  ownershipVerified: boolean;
+  /** The key-path P2TR address that signed the ownership proof (when verified). */
+  ownershipAddress?: string;
 }
 
 const sessions = new Map<string, Session>();
@@ -37,6 +41,8 @@ export function createSession(input: {
   positionId: string;
   publicKey: string;
   ttlMs?: number;
+  ownershipVerified?: boolean;
+  ownershipAddress?: string;
 }): Session {
   if (!isHex(input.publicKey, 32)) {
     throw new Error("Session public key must be a 32-byte x-only hex key");
@@ -49,6 +55,8 @@ export function createSession(input: {
     publicKey: input.publicKey.toLowerCase(),
     createdAt: now,
     expiresAt: now + (input.ttlMs ?? env.sessionTtlMs()),
+    ownershipVerified: Boolean(input.ownershipVerified),
+    ...(input.ownershipVerified && input.ownershipAddress ? { ownershipAddress: input.ownershipAddress } : {}),
   };
   sessions.set(session.token, session);
   return session;

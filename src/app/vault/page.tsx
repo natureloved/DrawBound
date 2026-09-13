@@ -67,6 +67,10 @@ export default function VaultPage() {
   const [vaultInput, setVaultInput] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [ownershipChallenge, setOwnershipChallenge] = useState<{ challenge: string; nonce: string; expiresAt: string } | null>(null);
+  const [ownershipAddress, setOwnershipAddress] = useState("");
+  const [ownershipSignature, setOwnershipSignature] = useState("");
+  const [ownershipVerified, setOwnershipVerified] = useState(false);
   const [customTxHex, setCustomTxHex] = useState("");
   const [refreshingProof, setRefreshingProof] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -218,7 +222,7 @@ export default function VaultPage() {
   );
 
   const connect = useCallback(
-    async (ref: string) => {
+    async (ref: string, ownership?: { nonce: string; ownershipAddress: string; ownershipSignature: string }) => {
       const vaultRef = ref.trim();
       if (!vaultRef) return;
       setConnecting(true);
@@ -229,7 +233,7 @@ export default function VaultPage() {
         const response = await fetch("/api/wallet/connect", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ vaultRef, sessionPublicKey: keypair.publicKey }),
+          body: JSON.stringify({ vaultRef, sessionPublicKey: keypair.publicKey, ...(ownership ?? {}) }),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error((data as ApiResult).detail ?? (data as ApiResult).error ?? "Wallet connection failed");
@@ -243,11 +247,14 @@ export default function VaultPage() {
         if (!stored.sessionToken) throw new Error("Server did not return a session token");
         window.localStorage.setItem(SESSION_KEY, JSON.stringify(stored));
         setSession(stored);
+        setOwnershipVerified(Boolean((data as { ownershipVerified?: boolean }).ownershipVerified));
+        setOwnershipChallenge(null);
+        setOwnershipSignature("");
         setNotice({
           tone: "allow",
           text: (data as { restored?: boolean }).restored
-            ? `Session restored for vault · live locked collateral: ${(data as { lockedSats?: number }).lockedSats?.toLocaleString() ?? "n/a"} sats`
-            : `Connected · live locked collateral: ${(data as { lockedSats?: number }).lockedSats?.toLocaleString() ?? "n/a"} sats`,
+            ? `Session restored for vault · ownership: ${(data as { ownershipVerified?: boolean }).ownershipVerified ? "VERIFIED" : "unproven"}`
+            : `Connected · ownership: ${(data as { ownershipVerified?: boolean }).ownershipVerified ? "VERIFIED (BIP-322)" : "unproven"} · locked: ${(data as { lockedSats?: number }).lockedSats?.toLocaleString() ?? "n/a"} sats`,
         });
         await refresh();
       } catch (error) {
@@ -261,6 +268,24 @@ export default function VaultPage() {
     [refresh],
   );
 
+  const requestOwnershipChallenge = useCallback(async () => {
+    const vaultRef = vaultInput.trim();
+    if (!vaultRef) return;
+    try {
+      const response = await fetch("/api/wallet/challenge", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ vaultRef }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? data.error ?? "Challenge request failed");
+      setOwnershipChallenge(data);
+      setNotice({ tone: "info", text: "Challenge issued — sign it with the vault user key, then connect" });
+    } catch (error) {
+      setNotice({ tone: "deny", text: error instanceof Error ? error.message : "Challenge request failed" });
+    }
+  }, [vaultInput]);
+
   const disconnect = useCallback(async () => {
     try {
       await fetch("/api/wallet/disconnect", { method: "POST", headers: authHeaders() });
@@ -269,6 +294,7 @@ export default function VaultPage() {
     }
     window.localStorage.removeItem(SESSION_KEY);
     setSession(null);
+    setOwnershipVerified(false);
     setPosition(null);
     setReceipts([]);
     setNotice({ tone: "info", text: "Session disconnected; the position remains on record for this vault" });
@@ -511,6 +537,12 @@ export default function VaultPage() {
                       {session.publicKey}
                     </code>
                   </div>
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-[var(--text-muted)]">Vault ownership (BIP-322)</span>
+                    <strong className={ownershipVerified ? "text-[var(--proof)]" : "text-[var(--text-dim)]"}>
+                      {ownershipVerified ? "✓ VERIFIED" : "unproven"}
+                    </strong>
+                  </div>
                   <button onClick={disconnect} className="btn-ghost w-full py-2.5 rounded-lg text-xs font-mono">
                     Disconnect Session
                   </button>
@@ -538,7 +570,12 @@ export default function VaultPage() {
                     }}
                   />
                   <button
-                    onClick={() => void connect(vaultInput)}
+                    onClick={() => {
+                      const nonce = ownershipChallenge?.nonce ?? "";
+                      const addr = ownershipAddress.trim();
+                      const sig = ownershipSignature.trim();
+                      void connect(vaultInput, nonce && addr && sig ? { nonce, ownershipAddress: addr, ownershipSignature: sig } : undefined);
+                    }}
                     disabled={connecting || !vaultInput.trim()}
                     className="btn-primary w-full py-3 rounded-lg text-xs font-mono"
                   >
@@ -549,6 +586,52 @@ export default function VaultPage() {
                     Connecting generates an ephemeral Schnorr keypair on this device. Every transition you authorize is
                     signed with it; the private key never leaves your browser.
                   </p>
+
+                  {/* Optional BIP-322 ownership proof */}
+                  <div className="pt-4 border-t border-[var(--border-soft)] space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-mono text-[var(--text-muted)]">
+                        Ownership proof (BIP-322) <span className="text-[var(--text-dim)]">· optional</span>
+                      </span>
+                      <button
+                        onClick={() => void requestOwnershipChallenge()}
+                        disabled={!vaultInput.trim()}
+                        className="text-[var(--gold)] hover:text-[var(--gold-soft)] text-xs font-mono border border-[var(--border)] px-2 py-0.5 rounded bg-[var(--surface-2)] transition-colors"
+                      >
+                        Request Challenge
+                      </button>
+                    </div>
+                    {ownershipChallenge && (
+                      <div>
+                        <div className="flex justify-between items-center text-[10px] font-mono text-[var(--text-dim)] mb-1">
+                          <span>Sign this message with the vault user key:</span>
+                          <button
+                            onClick={() => copyToClipboard(ownershipChallenge.challenge, "challenge")}
+                            className="text-[var(--gold)] hover:text-[var(--gold-soft)]"
+                          >
+                            {copiedKey === "challenge" ? "Copied ✓" : "Copy"}
+                          </button>
+                        </div>
+                        <code className="text-[10px] font-mono text-[var(--text)] break-all block bg-[#090807] p-3 rounded-lg border border-[var(--border-soft)]">
+                          {ownershipChallenge.challenge}
+                        </code>
+                      </div>
+                    )}
+                    <input
+                      className="vault-input"
+                      value={ownershipAddress}
+                      onChange={(e) => setOwnershipAddress(e.target.value)}
+                      placeholder="Ownership address (key-path P2TR of the vault user key)"
+                      spellCheck={false}
+                    />
+                    <textarea
+                      className="vault-input min-h-[56px] resize-y"
+                      value={ownershipSignature}
+                      onChange={(e) => setOwnershipSignature(e.target.value)}
+                      placeholder="BIP-322 signature (base64) — see scripts/operator-live.mts ownership"
+                      spellCheck={false}
+                    />
+                  </div>
                 </div>
               )}
             </div>

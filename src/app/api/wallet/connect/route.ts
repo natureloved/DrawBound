@@ -4,6 +4,7 @@ import { connectVault, getPosition, positionIdForVault } from "@/lib/store";
 import { fetchLiveLoanHealthProof } from "@/lib/proofs/oracle-client";
 import { isLiveMode } from "@/lib/tachi";
 import { createSession } from "@/lib/auth/sessions";
+import { consumeOwnershipChallenge, isP2trAddress, verifyOwnershipSignature } from "@/lib/auth/ownership";
 import { badRequest, forbidden, guardRateLimit, readJsonBody } from "@/app/api/_lib/http";
 import { isHex } from "@/lib/wallet/canonical";
 import { env } from "@/lib/config/env";
@@ -39,6 +40,36 @@ export async function POST(request: Request) {
     return badRequest("sessionPublicKey must be a 32-byte x-only Schnorr public key (64 hex chars)");
   }
 
+  // Optional BIP-322 ownership proof: single-use challenge signed by the vault
+  // user key, verified against the operator's key-path P2TR ownership address.
+  let ownershipVerified = false;
+  let ownershipAddress: string | undefined;
+  const ownershipNonce = typeof body.ownershipNonce === "string" ? body.ownershipNonce.trim() : "";
+  const ownershipAddrRaw = typeof body.ownershipAddress === "string" ? body.ownershipAddress.trim() : "";
+  const ownershipSig = typeof body.ownershipSignature === "string" ? body.ownershipSignature.trim() : "";
+  if (ownershipNonce || ownershipAddrRaw || ownershipSig) {
+    if (!ownershipNonce || !ownershipAddrRaw || !ownershipSig) {
+      return badRequest("Incomplete ownership proof: ownershipNonce, ownershipAddress and ownershipSignature are all required");
+    }
+    const challengeMessage = consumeOwnershipChallenge(ownershipNonce, vaultRef);
+    if (!challengeMessage) {
+      return badRequest("Ownership challenge is invalid, expired, or already used; request a new one");
+    }
+    if (!isP2trAddress(ownershipAddrRaw)) {
+      return badRequest("ownershipAddress must be a bech32 P2TR address");
+    }
+    if (!verifyOwnershipSignature({ challengeMessage, ownershipAddress: ownershipAddrRaw, signatureBase64: ownershipSig })) {
+      return badRequest("Ownership signature failed BIP-322 verification");
+    }
+    ownershipVerified = true;
+    ownershipAddress = ownershipAddrRaw;
+  }
+
+  // Strict mode: a P2TR vault address must come with a valid ownership proof.
+  if (env.requireOwnershipProof() && isP2trAddress(vaultRef) && !ownershipVerified) {
+    return forbidden("REQUIRE_OWNERSHIP_PROOF is enabled: connect requires a valid BIP-322 ownership proof for this vault address");
+  }
+
   // Live mode enforces ALLOWED_VAULT_REFS; mirror the adapter gate so connect fails closed too.
   if (isLiveMode()) {
     const allowed = env.allowedVaultRefs();
@@ -71,7 +102,13 @@ export async function POST(request: Request) {
   });
 
   const position = await connectVault(vaultRef, lockedSats ?? 0, liveProof);
-  const session = createSession({ vaultRef, positionId: position.id, publicKey: sessionPublicKey });
+  const session = createSession({
+    vaultRef,
+    positionId: position.id,
+    publicKey: sessionPublicKey,
+    ownershipVerified,
+    ownershipAddress,
+  });
 
   return NextResponse.json(
     {
@@ -80,6 +117,7 @@ export async function POST(request: Request) {
       liveReadOk,
       lockedSats: lockedSats ?? null,
       restored: Boolean(existing),
+      ownershipVerified,
       proofSource: liveProof.source ?? (isLiveMode() ? "live-hat-oracle" : "live-tachi-read"),
       position,
       sessionToken: session.token,

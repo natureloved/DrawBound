@@ -30,6 +30,9 @@ const envSchema = z.object({
   MIN_HEALTH_BPS: z.coerce.number().int().positive().default(12500),
   PROOF_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(300),
   SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(720),
+  // When true, connecting a P2TR vault address requires a valid BIP-322
+  // ownership proof (fixture-style vault refs stay exempt).
+  REQUIRE_OWNERSHIP_PROOF: z.enum(BOOL_STRINGS).default("false"),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -116,6 +119,9 @@ export const env = {
   },
   sessionTtlMs(): number {
     return readInt("SESSION_TTL_MINUTES", 720) * 60_000;
+  },
+  requireOwnershipProof(): boolean {
+    return readBool("REQUIRE_OWNERSHIP_PROOF", false);
   },
   rateLimitMax(): number {
     return readInt("RATE_LIMIT_MAX", 60);

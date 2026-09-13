@@ -23,6 +23,7 @@
     "@tachibtc/tachi-sdk-ts": "0.2.1",
     "@tachibtc/taurus-vault-core": "0.3.4",
     "@tachibtc/taurus-wallet-aggregator": "0.4.5",
+    "bip322-js": "^4.0.0",
     "next": "16.3.4",
     "react": "19.1.1",
     "react-dom": "19.1.1",
