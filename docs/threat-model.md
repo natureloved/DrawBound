@@ -16,9 +16,12 @@ Connecting registers an ephemeral browser-generated Schnorr public key; every st
 
 What this proves: the requester holds the private key registered for that session, and the request binds exactly one action/amount/nonce to one position. Replayed signatures hit either the idempotency cache (same fingerprint → original receipt) or the nonce check (advanced nonce → 409).
 
-What this does NOT prove: on-chain ownership of the vault. Anyone who can reach the server may connect any vault ref allowed by policy and act on its position. In live mode this gap is closed at the chain layer — a credit transition only executes as a real Taurus-signed transaction that the operator must build with the vault's actual keys. Vault-key-level authentication (BIP-322 or PSBT challenge) is the documented next step for a public multi-user deployment.
+What this does NOT prove: on-chain ownership of the vault. Anyone who can reach the server may connect any vault ref allowed by policy and act on its position. Two mitigations exist:
 
-Sessions live in process memory; a restart invalidates them and browsers reconnect automatically with their stored keypair.
+- **BIP-322 ownership proofs (optional)**: connect can present a single-use challenge signed by the vault user key, verified strictly against the key's key-path P2TR ownership address. `REQUIRE_OWNERSHIP_PROOF=true` makes this mandatory for P2TR vault refs. The challenge embeds the vaultRef, so the proof attests that this key claims that vault; deriving vault and ownership addresses from the same key (operator tooling) makes the binding by construction. What the signature proves is control of the user key — not that the named vault was actually funded by that key.
+- **Chain-level enforcement (live mode)**: a credit transition only executes as a real Taurus-signed transaction that the operator must build with the vault's actual keys.
+
+Sessions live in process memory; a restart invalidates them and browsers reconnect automatically with their stored keypair. Ownership challenges are single-use, expire in 10 minutes, and are never burned by a wrong-vaultRef attempt.
 
 ## Authorization boundary
 
@@ -34,4 +37,4 @@ The synthetic demo transition payload is tagged with a `dbdemo01` magic prefix; 
 
 ## Out of scope
 
-Liquidation (unhealthy positions freeze draws but are never force-closed), oracle liveness/security beyond signature checks, custody, regulatory compliance, mainnet deployment, dynamic interest rates, lender matching, credit scoring, and multi-instance horizontal scaling (the JSON store is single-process by design; see docs/deployment.md).
+Liquidation (unhealthy positions freeze draws but are never force-closed — the exit is operator-executed via Taurus unilateral-exit tooling; see docs/credit-economics.md), oracle liveness/security beyond signature checks, custody, regulatory compliance, mainnet deployment, dynamic interest rates, lender matching, credit scoring, and multi-instance horizontal scaling (the store is a local file by design; see docs/deployment.md).
