@@ -1,63 +1,99 @@
-# Drawbound
+# DrawBound
 
-Drawbound is a one-position, self-custodial native-BTC credit prototype. BTC collateral is represented by a TAURUS vault reference; a fresh HAT/RIP loan-health proof is the covenant that authorizes a SatVM credit transition. Unhealthy or stale evidence freezes new draws, while repayment and the documented unilateral exit path remain available.
+DrawBound is a self-custodial native-BTC credit protocol for testnet. BTC collateral is represented by a TAURUS vault reference; a fresh HAT/RIP-shaped loan-health proof is the covenant that authorizes a SatVM credit transition. Unhealthy or stale evidence freezes new draws, while repayment and the documented unilateral exit path remain available.
 
-## Run
+## Quickstart
 
-```powershell
+```bash
 corepack pnpm install
-corepack pnpm dev
+corepack pnpm dev          # http://localhost:3000 — fixture mode on signet
 ```
 
-Open `http://localhost:3000`. The default is deterministic `FIXTURE` mode on signet. Use the proof tabs to run the same draw request through healthy, unhealthy, and stale inputs. Use **Check live status** to run an explicit, read-only Tachi/Taurus network inspection without changing the fixture position.
+Verify everything:
 
-The official Tachi SDK and Taurus vault verifier have been validated against the public Signet endpoint. The application still keeps all live financial writes disabled; fixture mode remains the only credit-transition writer until a funded, disposable Signet flow is separately approved and verified. See [docs/tachi-integration.md](docs/tachi-integration.md) before enabling live transport.
+```bash
+corepack pnpm typecheck    # tsc --noEmit
+corepack pnpm lint         # eslint (flat config)
+corepack pnpm test         # 62 unit + integration tests
+corepack pnpm build        # production build
+corepack pnpm smoke        # HTTP end-to-end run against SMOKE_BASE (default http://127.0.0.1:3107)
+```
+
+## How a session works
+
+1. **Connect** — the browser generates an ephemeral Schnorr keypair (`@noble/curves`, BIP-340). The private key never leaves the device; the public key is registered with `POST /api/wallet/connect` together with the vault ref. The server reads the vault's real locked VTXOs from the Tachi signet daemon, creates (or **restores**, if previously connected) the position, and returns a session token.
+2. **Act** — every draw/repay/unlock signs the canonical message
+
+   ```
+   DrawBound:v1:<positionId>:<vaultRef>:<action>:<amount>:<nonce>
+   ```
+
+   with the session key and presents the session token (`x-drawbound-session` header) plus the signature. The server verifies the signature, checks the nonce against position state (stale/replayed requests get `409`), evaluates the covenant, and records an independently hashed receipt.
+3. **Replay safety** — the idempotency fingerprint is `positionId:action:amount:nonce`. A retried signed request returns the original receipt without re-executing; after success the nonce advances, so old signatures are permanently stale.
+
+Honest scope of session auth: it authenticates the browser session that connected a vault — it does **not** prove on-chain vault ownership. Ownership is enforced at the chain level in live mode, where the credit transition must be a real Taurus-signed transaction for that vault.
 
 ## Modes
 
-`NATIVE` and `RELAY` are integration boundaries reserved for verified official Tachi APIs. `FIXTURE` is the default rehearsal mode and is labeled in the UI. `LIVE` is now wired: `LiveTachiAdapter` reads the real locked TAURUS vault state from the signet/regtest daemon and broadcasts a caller-supplied signed txHex for credit transitions. `RECORDED` can be added from a successful live trace. Mainnet writes are disabled by default; never commit keys.
+| Mode | Reads | Writes | Purpose |
+|---|---|---|---|
+| `FIXTURE` (default) | live signet reads (best-effort) | deterministic fixture transitions | rehearsal, demos, CI |
+| `LIVE` | real locked-VTXO state | broadcasts operator-supplied signed `txHex` | funded signet/regtest validation |
 
-### Live mode (reads are already live; writes are real but gated)
+`NATIVE` and `RELAY` remain reserved integration boundaries for verified official Tachi APIs; `RECORDED` (replay of a live trace) is not implemented.
 
-The dashboard's **Check live status** action and `GET /api/tachi/diagnostics` already talk to the real Tachi signet daemon (health, validators, quorum, locked VTXOs). `LIVE` mode promotes the credit-transition writes to the real network:
+### Live mode (writes are real and multiply gated)
 
-```powershell
-$env:LIVE_TACHI_ENABLED="true"
-$env:TACHI_VAULT_REF="tb1p<your-funded-signet-taurus-vault>"
-$env:ALLOWED_VAULT_REFS="tb1p<your-funded-signet-taurus-vault>"
+```bash
+LIVE_TACHI_ENABLED=true
+KILL_SWITCH=false                # live writes are refused while the kill switch is engaged
+TACHI_VAULT_REF=tb1p<your-funded-signet-taurus-vault>
+ALLOWED_VAULT_REFS=tb1p<your-funded-signet-taurus-vault>
 corepack pnpm dev
 ```
 
-Safety gates (all fail closed):
+Safety gates — all fail closed:
 
-- Testnet only : `TACHI_NETWORK` must be `signet` or `regtest`; mainnet is refused unless `ALLOW_MAINNET=true` + `LIVE_TACHI_ENABLED=true` + kill switch off.
-- Allowed vault list: Only pre-configured vaults (`ALLOWED_VAULT_REFS`) can be connected/transitioned.
-- Fail-closed transitions: If a live node query fails or health drops below 1.0, the transaction is rejected with an immutable receipt.
-- Signature required: Every live transition must supply a Schnorr signature over the canonical message `DrawBound:v1:<vaultRef>:<epoch>:<digest>`.
-- Client-side signing: `signTransitionClientSide()` runs in the browser / caller runtime using a real Schnorr signer (`@noble/curves/secp256k1`).
+- **Testnet only**: `TACHI_NETWORK` must be `signet`/`regtest`; mainnet is refused unless `ALLOW_MAINNET=true` + `LIVE_TACHI_ENABLED=true` + kill switch off.
+- **Kill switch**: `KILL_SWITCH=true` (the default) blocks every live broadcast.
+- **Vault allowlist**: only `ALLOWED_VAULT_REFS` entries can connect/read/transition in live mode.
+- **Real transactions only**: the live adapter rejects the synthetic demo payload (tagged with the `dbdemo01` magic prefix) and any hex that is not a plausibly-sized serialized transaction. A live draw/repay/unlock without a real Taurus-signed `txHex` (paste it in the terminal's Advanced box) returns a `DENY` receipt.
+- **Signed proofs (optional strict mode)**: set `PROOF_RELAY_PUBLIC_KEYS` to require every health proof to carry a valid BIP-340 signature from an allowlisted oracle key; unsigned server-derived attestations are then rejected. Configure `HAT_ORACLE_URL` to fetch such attestations.
+- **Admin gate**: `POST /api/reset` (and live-mode position seeding) requires `x-admin-token` matching `ADMIN_TOKEN`; without `ADMIN_TOKEN` reset only works in fixture mode.
 
-Without a signed `txHex`, a live draw/repay/unlock returns a `DENY` receipt (frozen) rather than broadcasting : the same fail-closed behavior as an unhealthy proof.
+### Health attestations
 
+- `source: "oracle"` — signed attestation from `HAT_ORACLE_URL` (when configured).
+- `source: "derived"` — server-computed from real chain state: `healthBps = collateralSats / (debtUnits × CREDIT_UNIT_SATS) × 10000`, capped at 650%. Derived proofs are debt-aware: drawing reduces health, and the gate re-derives at decision time (no stale snapshots).
+- `source: "fixture"` — deterministic rehearsal artifacts (healthy/unhealthy/stale/invalid), labeled as such, with no claim of proof security.
 
-The supplied Tachi docs name `@tachibtc/tachi-sdk-ts`, `@tachibtc/taurus-vault-core`, and `@tachibtc/taurus-wallet-aggregator`. The TypeScript SDK is installed from public npm at the pinned `0.2.1` release; the Taurus packages are available from public npm at `0.3.4` and `0.4.5`. The read-only SDK inventory is available immediately:
+The draw gate (`evaluateDraw`) fails closed on: staleness, position/vault/network/covenant binding, minimum health, credit limit, draw caps, and nonce mismatch.
 
-```powershell
-corepack pnpm spike:tachi
-```
+## API surface
 
-The Taurus vault derivation and Signet validator quorum can be checked without a wallet sync or transaction write:
+All state-changing routes are rate-limited per IP and require a session; reads are public.
 
-```powershell
-corepack pnpm spike:taurus
-```
+| Route | Method | Auth | Purpose |
+|---|---|---|---|
+| `/api/wallet/connect` | POST | — | register session pubkey, create/restore position |
+| `/api/wallet/disconnect` | POST | session | revoke session |
+| `/api/draw` · `/api/repay` · `/api/unlock` | POST | session + signature | covenant-gated transitions |
+| `/api/proofs` | POST | session | refresh the position's health attestation |
+| `/api/positions` | GET / POST | — / admin(live) | session-scoped position, public list; seed a fixture position |
+| `/api/receipts` | GET | — | decision audit trail (session-scoped by default) |
+| `/api/reset` | POST | admin | destructive demo reset |
+| `/api/tachi/diagnostics` | GET | — | read-only Tachi network inspection |
+| `/api/health` | GET | — | liveness, mode, policy, counts |
 
-The dashboard's **Check live status** action calls `GET /api/tachi/diagnostics`. It reports public health, chain, validator, quorum, and write-policy metadata. Add `?vault=<p2tr-address>` to include a read-only locked-VTXO summary for a known vault address.
+## Storage & deployment
 
-See [docs/tachi-integration.md](docs/tachi-integration.md), [docs/threat-model.md](docs/threat-model.md), and [docs/demo-script.md](docs/demo-script.md).
+Positions, receipts, idempotency records, and proofs persist to a JSON store (`DATA_DIR`, default `.data/`) with atomic serialized writes that are awaited before responding. This supports a **single instance**; see [docs/deployment.md](docs/deployment.md) for Docker, CI, environment reference, and the SQLite/Postgres swap path.
 
-## Verification
+## Documentation
 
-```powershell
-corepack pnpm test
-corepack pnpm build
-```
+- [docs/deployment.md](docs/deployment.md) — configuration, Docker, CI, production checklist
+- [docs/tachi-integration.md](docs/tachi-integration.md) — SDK/Taurus integration record and live-write procedure
+- [docs/threat-model.md](docs/threat-model.md) — trust assumptions and what the gates do (and do not) prove
+- [docs/demo-script.md](docs/demo-script.md) — short demo flow
+
+The TypeScript SDK (`@tachibtc/tachi-sdk-ts@0.2.1`) and Taurus packages (`@tachibtc/taurus-vault-core@0.3.4`, `@tachibtc/taurus-wallet-aggregator@0.4.5`) are pinned from public npm. Read-only inventory spikes: `corepack pnpm spike:tachi` / `spike:taurus`. Mainnet writes are disabled by default; never commit keys.
