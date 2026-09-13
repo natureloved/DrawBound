@@ -3,8 +3,13 @@ node_modules/
 out/
 .env
 .env.local
+.env*.local
 coverage/
 .pnpm-store/
 tsconfig.tsbuildinfo
 
-docs/
+# Runtime data (JSON store) — never commit
+.data/
+
+# Agent session memory — local only
+.workbuddy-ai/
