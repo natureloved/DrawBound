@@ -15,7 +15,8 @@
     "spike:taurus": "tsx scripts/spike-taurus.ts",
     "demo:seed": "tsx scripts/seed-demo.ts",
     "demo:reset": "tsx scripts/seed-demo.ts --reset",
-    "smoke": "tsx scripts/smoke.mts"
+    "smoke": "tsx scripts/smoke.mts",
+    "oracle": "tsx scripts/hat-oracle.ts"
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",

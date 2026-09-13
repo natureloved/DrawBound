@@ -26,6 +26,7 @@ export function deriveHealthProof(
     network?: string;
     now?: Date;
     verification?: LoanHealthProof["verification"];
+    source?: LoanHealthProof["source"];
   } = {},
 ): LoanHealthProof {
   const network = opts.network ?? env.network();
@@ -46,6 +47,6 @@ export function deriveHealthProof(
     observedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + Math.min(maxAgeMs, 300_000) - 60_000).toISOString(),
     verification: opts.verification ?? "VERIFIED",
-    source: "derived",
+    source: opts.source ?? "derived",
   });
 }

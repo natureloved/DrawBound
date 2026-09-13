@@ -45,16 +45,19 @@ export async function POST(request: Request) {
 
   // Refresh a current, debt-aware health attestation so the gate evaluates the position's
   // REAL present health (collateral vs drawn debt), not a stale snapshot from connect/refresh.
-  // Live mode reads the real chain state (or a configured HAT oracle); fixture mode derives locally.
-  const freshProof = isLiveMode()
-    ? await fetchLiveLoanHealthProof({
-        vaultRef: before.vaultRef,
-        positionId: before.id,
-        network: env.network(),
-        debtUnits: before.debtUnits,
-        collateralSats: before.collateralSats,
-      })
-    : deriveHealthProof(before);
+  // Live mode and strict signed-proof mode fetch through the oracle/chain-read path; plain
+  // fixture mode derives locally (fast, no network).
+  const strictProofs = env.proofRelayPublicKeys().length > 0;
+  const freshProof =
+    isLiveMode() || strictProofs
+      ? await fetchLiveLoanHealthProof({
+          vaultRef: before.vaultRef,
+          positionId: before.id,
+          network: env.network(),
+          debtUnits: before.debtUnits,
+          collateralSats: before.collateralSats,
+        })
+      : deriveHealthProof(before);
   const decision = verifyNormalizedProof(freshProof)
     ? creditGate(before, freshProof, amount, nonce)
     : { allowed: false, reason: "Loan-health proof failed verification", resultingState: "FROZEN" as const };
