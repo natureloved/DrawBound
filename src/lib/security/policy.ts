@@ -1,9 +1,25 @@
+import { env } from "../config/env";
+
+/**
+ * Write-policy gates. Values are read through the validated env module so a
+ * malformed configuration fails fast at boot and runtime flips are respected.
+ */
 export const policy = {
-  network: process.env.TACHI_NETWORK || "signet",
-  maxTestSats: Number(process.env.MAX_TEST_SATS || 5000),
-  maxDrawsPerPosition: Number(process.env.MAX_DRAWS_PER_POSITION || 3),
-  mainnetAllowed: process.env.ALLOW_MAINNET === "true" && process.env.LIVE_TACHI_ENABLED === "true" && process.env.KILL_SWITCH !== "true",
-  adapterMode: process.env.PROOF_MODE || "fixture",
+  get network() {
+    return env.network();
+  },
+  get maxTestSats() {
+    return env.maxTestSats();
+  },
+  get maxDrawsPerPosition() {
+    return env.maxDrawsPerPosition();
+  },
+  get mainnetAllowed() {
+    return env.mainnetAllowed();
+  },
+  get adapterMode() {
+    return process.env.PROOF_MODE || "fixture";
+  },
 };
 
 export function assertWritePolicy(network: string, collateralSats: number): void {

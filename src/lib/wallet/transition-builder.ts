@@ -1,15 +1,29 @@
-import { createHash } from "node:crypto";
-import type { TransitionRequest, SignedTransition } from "./types";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, canonicalTransitionMessage, signCanonical } from "./canonical";
+import type { SignedTransition, TransitionRequest } from "./types";
 
 /**
- * Builds a deterministic SatVM credit transition transaction payload.
- * When a wallet signer is provided (or in automated signet testing),
- * it signs the transition using the user's Taurus key / BIP-322 signature.
+ * Demo transition payloads and session signing.
+ *
+ * IMPORTANT — honesty boundary: `buildDemoTransition` produces a SYNTHETIC,
+ * self-labelled payload (magic prefix `dbdemo01`). It is a rehearsal artifact
+ * for FIXTURE mode only. It is not a Bitcoin transaction, it is not signed with
+ * any vault key, and `LiveTachiAdapter` refuses to broadcast it. A live credit
+ * transition requires a real signed txHex built by the operator's Taurus wallet
+ * (see docs/tachi-integration.md).
+ *
+ * What IS real cryptography: `signTransitionRequest` signs the canonical
+ * transition message with the browser session's ephemeral Schnorr key
+ * (BIP-340 via @noble/curves), and the server verifies that signature against
+ * the session public key registered at wallet connect.
  */
-export function buildSatvmCreditTransition(request: TransitionRequest): SignedTransition {
+
+export const SYNTHETIC_TX_MAGIC = "dbdemo01";
+
+export function buildDemoTransition(request: TransitionRequest): SignedTransition {
   const canonicalPayload = JSON.stringify({
     version: 1,
-    type: "satvm_credit_transition",
+    type: "satvm_credit_transition_demo",
     action: request.action,
     positionId: request.positionId,
     vaultRef: request.vaultRef,
@@ -19,33 +33,28 @@ export function buildSatvmCreditTransition(request: TransitionRequest): SignedTr
     timestamp: new Date().toISOString(),
   });
 
-  const txHash = createHash("sha256").update(canonicalPayload).digest("hex");
+  const txHash = bytesToHex(sha256(new TextEncoder().encode(canonicalPayload)));
+  const witnessSig = bytesToHex(sha256(new TextEncoder().encode(`sig:${txHash}:${request.vaultRef}`)));
+  const rawPayloadHex = bytesToHex(new TextEncoder().encode(canonicalPayload));
 
-  // Synthetic standard 64-byte Schnorr witness signature format for SatVM transitions
-  const witnessSig = createHash("sha256").update(`sig:${txHash}:${request.vaultRef}`).digest("hex");
-  const rawPayloadHex = Buffer.from(canonicalPayload, "utf-8").toString("hex");
+  // [magic 8 hex][txHash 64][witness 64][payload] — tagged so it can never be
+  // mistaken for a real Bitcoin transaction by any Drawbound code path.
+  const txHex = `${SYNTHETIC_TX_MAGIC}${txHash}${witnessSig}${rawPayloadHex}`;
+  return { txHex, txid: txHash };
+}
 
-  // Formats txHex as standard SatVM serialized payload: [length 4B][txHash 32B][witness 32B][payload]
-  const txHex = `01000000${txHash}${witnessSig}${rawPayloadHex}`;
-
-  return {
-    txHex,
-    txid: txHash,
-  };
+/** True when a txHex is a Drawbound synthetic demo payload (fixture mode only). */
+export function isSyntheticTransition(txHex?: string): boolean {
+  return typeof txHex === "string" && txHex.startsWith(SYNTHETIC_TX_MAGIC);
 }
 
 /**
- * Generates an automated signed transaction when the user requests a draw/repay/unlock
- * in the client interface, removing the need for manual copy-pasting.
+ * Sign a transition request with the session private key (ephemeral, browser-held).
+ * The server verifies against the session public key bound at wallet connect.
  */
-export async function signTransitionClientSide(
-  request: TransitionRequest,
-  customTxHex?: string,
-): Promise<string> {
-  if (customTxHex && customTxHex.trim().length > 0) {
-    return customTxHex.trim();
-  }
-
-  const transition = buildSatvmCreditTransition(request);
-  return transition.txHex;
+export function signTransitionRequest(
+  sessionPrivateKeyHex: string,
+  request: Pick<TransitionRequest, "positionId" | "vaultRef" | "action" | "amount" | "nonce">,
+): string {
+  return signCanonical(canonicalTransitionMessage(request), sessionPrivateKeyHex);
 }

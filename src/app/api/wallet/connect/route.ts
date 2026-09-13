@@ -1,30 +1,49 @@
 import { NextResponse } from "next/server";
 import { readTachiSnapshot } from "@/lib/tachi/read-only";
-import { connectVault, positionIdForVault } from "@/lib/store";
+import { connectVault, getPosition, positionIdForVault } from "@/lib/store";
 import { fetchLiveLoanHealthProof } from "@/lib/proofs/oracle-client";
 import { isLiveMode } from "@/lib/tachi";
+import { createSession } from "@/lib/auth/sessions";
+import { badRequest, forbidden, guardRateLimit, readJsonBody } from "@/app/api/_lib/http";
+import { isHex } from "@/lib/wallet/canonical";
+import { env } from "@/lib/config/env";
 
 export const dynamic = "force-dynamic";
 
-function validVaultRef(value: string): boolean {
-  return value.length > 4 && value.length <= 200 && !/[\u0000-\u0020\u007f]/.test(value);
-}
-
+/**
+ * Connect a self-custodial vault and open an authenticated session.
+ *
+ * Body: { vaultRef: string, sessionPublicKey: string (32-byte x-only hex) }
+ *
+ * The browser generates an ephemeral Schnorr keypair, keeps the private key,
+ * and registers the public key here. Every later draw/repay/unlock must carry
+ * the returned session token plus a signature by that key. Connecting an
+ * already-known vault RESTORES its position (debt, receipts) instead of
+ * resetting it.
+ *
+ * Honesty note: connecting proves control of the browser key, not ownership of
+ * the vault. Vault ownership is enforced at the chain level in live mode, where
+ * the credit transition must be a Taurus-signed transaction for that vault.
+ */
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
+  const limited = guardRateLimit(request);
+  if (limited) return limited;
+
+  const body = await readJsonBody(request);
   const vaultRef = typeof body.vaultRef === "string" ? body.vaultRef.trim() : "";
-  if (!validVaultRef(vaultRef)) {
-    return NextResponse.json({ error: "Invalid vault reference" }, { status: 400 });
+  if (vaultRef.length <= 4 || vaultRef.length > 200 || /[\u0000-\u0020\u007f]/.test(vaultRef)) {
+    return badRequest("Invalid vault reference");
+  }
+  const sessionPublicKey = typeof body.sessionPublicKey === "string" ? body.sessionPublicKey.trim().toLowerCase() : "";
+  if (!isHex(sessionPublicKey, 32)) {
+    return badRequest("sessionPublicKey must be a 32-byte x-only Schnorr public key (64 hex chars)");
   }
 
-  // Live mode enforces ALLOWED_VAULT_REFS; mirror the gate so connect fails closed too.
+  // Live mode enforces ALLOWED_VAULT_REFS; mirror the adapter gate so connect fails closed too.
   if (isLiveMode()) {
-    const allowed = (process.env.ALLOWED_VAULT_REFS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
+    const allowed = env.allowedVaultRefs();
     if (allowed.length > 0 && !allowed.includes(vaultRef)) {
-      return NextResponse.json({ error: "Vault is not in ALLOWED_VAULT_REFS; refusing connection" }, { status: 403 });
+      return forbidden("Vault is not in ALLOWED_VAULT_REFS; refusing connection");
     }
   }
 
@@ -39,27 +58,32 @@ export async function POST(request: Request) {
     liveReadOk = false;
   }
 
-  // Build a live-derived HAT/RIP health attestation bound to this vault's fresh position.
-  // Falls back to a fixture-healthy proof if the live read is unavailable.
+  // Debt-aware proof bound to this vault's position (restore-safe: reflects existing debt).
   const positionId = positionIdForVault(vaultRef);
-  const modeledCollateral = lockedSats && lockedSats > 0 ? lockedSats : 5000;
+  const existing = await getPosition(positionId);
+  const modeledCollateral = lockedSats && lockedSats > 0 ? lockedSats : (existing?.collateralSats ?? 5000);
   const liveProof = await fetchLiveLoanHealthProof({
     vaultRef,
     positionId,
-    network: process.env.TACHI_NETWORK,
-    debtUnits: 0,
+    network: env.network(),
+    debtUnits: existing?.debtUnits ?? 0,
     collateralSats: modeledCollateral,
   });
 
-  const position = connectVault(vaultRef, lockedSats ?? 0, positionId, liveProof);
+  const position = await connectVault(vaultRef, lockedSats ?? 0, liveProof);
+  const session = createSession({ vaultRef, positionId: position.id, publicKey: sessionPublicKey });
+
   return NextResponse.json(
     {
       ok: true,
       vaultRef,
       liveReadOk,
       lockedSats: lockedSats ?? null,
-      proofSource: isLiveMode() ? "live-hat-oracle" : "live-tachi-read",
+      restored: Boolean(existing),
+      proofSource: liveProof.source ?? (isLiveMode() ? "live-hat-oracle" : "live-tachi-read"),
       position,
+      sessionToken: session.token,
+      sessionExpiresAt: new Date(session.expiresAt).toISOString(),
     },
     { headers: { "cache-control": "no-store" } },
   );

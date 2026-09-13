@@ -1,20 +1,56 @@
 import { NextResponse } from "next/server";
 import { assertPositionInvariants } from "@/lib/domain/invariants";
 import { createReceipt, createReceiptId } from "@/lib/receipts/create";
-import { getTachiAdapter } from "@/lib/tachi";
-import { addReceipt, getPosition, setPosition } from "@/lib/store";
+import { getTachiAdapter, isLiveMode } from "@/lib/tachi";
+import { authenticateAction } from "@/lib/auth/action-auth";
+import { badRequest, guardRateLimit, nonceConflict, readJsonBody } from "@/app/api/_lib/http";
+import { addReceipt, getProcessedDraw, rememberProcessedDraw, savePosition, transitionFingerprint } from "@/lib/store";
 
-const tachi = getTachiAdapter();
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
-  const requestedAmount = Number(body.amount);
-  const before = getPosition();
-  const amount = Math.max(0, Math.min(before.debtUnits, Number.isFinite(requestedAmount) ? requestedAmount : 0));
-  const txHex = typeof body.txHex === "string" ? body.txHex : undefined;
+  const limited = guardRateLimit(request);
+  if (limited) return limited;
+
+  const body = await readJsonBody(request);
+  const auth = await authenticateAction(request, body, "REPAY");
+  if (!auth.ok) return auth.response;
+  const { position: before, amount, nonce } = auth.value;
+
+  if (amount < 0) return badRequest("Repay amount cannot be negative");
+  // Repayment is always permitted (even while FROZEN) and capped at the outstanding debt.
+  const applied = Math.min(amount, before.debtUnits);
+
+  const fingerprint = transitionFingerprint(before.id, "REPAY", amount, nonce);
+  const previousReceipt = await getProcessedDraw(fingerprint);
+  if (previousReceipt) {
+    return NextResponse.json({ decision: previousReceipt.result, receipt: previousReceipt, position: before, idempotent: true });
+  }
+
+  const stale = nonceConflict(nonce, before.nonce);
+  if (stale) return stale;
+
+  const txHex = typeof body.txHex === "string" && body.txHex.trim() ? body.txHex.trim() : undefined;
+  if (isLiveMode() && !txHex) {
+    const reason = "Live mode requires a real Taurus-signed txHex to broadcast";
+    const receipt = createReceipt({
+      id: createReceiptId(),
+      positionId: before.id,
+      action: "REPAY",
+      requestedAmount: amount,
+      previousState: before.state,
+      result: "DENY",
+      reason,
+      resultingState: before.state,
+      createdAt: new Date().toISOString(),
+    });
+    await addReceipt(receipt);
+    return NextResponse.json({ decision: "DENY", reason, receipt, position: before });
+  }
+
   let transition: { transitionRef: string };
   try {
-    transition = await tachi.submitCreditTransition({ positionId: before.id, action: "REPAY", amount, txHex });
+    transition = await getTachiAdapter().submitCreditTransition({ positionId: before.id, action: "REPAY", amount: applied, txHex });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Live credit transition failed";
     const receipt = createReceipt({
@@ -28,13 +64,21 @@ export async function POST(request: Request) {
       resultingState: before.state,
       createdAt: new Date().toISOString(),
     });
-    addReceipt(receipt);
-    return NextResponse.json({ decision: "DENY", reason, receipt, position: getPosition() });
+    await addReceipt(receipt);
+    return NextResponse.json({ decision: "DENY", reason, receipt, position: before });
   }
-  const debtUnits = before.debtUnits - amount;
-  const next = { ...before, debtUnits, state: debtUnits === 0 ? "REPAID" as const : before.state, exitStatus: debtUnits === 0 ? "AVAILABLE" as const : before.exitStatus, nonce: before.nonce + 1 };
+
+  const debtUnits = before.debtUnits - applied;
+  const next = {
+    ...before,
+    debtUnits,
+    state: debtUnits === 0 ? ("REPAID" as const) : before.state,
+    exitStatus: debtUnits === 0 ? ("AVAILABLE" as const) : before.exitStatus,
+    nonce: before.nonce + 1,
+  };
   assertPositionInvariants(next);
-  setPosition(next);
+  await savePosition(next);
+
   const receipt = createReceipt({
     id: createReceiptId(),
     positionId: before.id,
@@ -42,11 +86,12 @@ export async function POST(request: Request) {
     requestedAmount: amount,
     previousState: before.state,
     result: "ALLOW",
-    reason: amount ? "Repayment accepted while collateral remains locked" : "No outstanding debt to repay",
+    reason: applied ? "Repayment accepted while collateral remains locked" : "No outstanding debt to repay",
     resultingState: next.state,
     transitionRef: transition.transitionRef,
     createdAt: new Date().toISOString(),
   });
-  addReceipt(receipt);
-  return NextResponse.json({ decision: "ALLOW", receipt, position: getPosition() });
+  await addReceipt(receipt);
+  await rememberProcessedDraw(fingerprint, receipt);
+  return NextResponse.json({ decision: "ALLOW", receipt, position: next });
 }

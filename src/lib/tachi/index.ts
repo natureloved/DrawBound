@@ -1,9 +1,10 @@
 import type { TachiAdapter } from "./adapter";
 import { FixtureTachiAdapter } from "./fixture-adapter";
 import { LiveTachiAdapter } from "./live-adapter";
+import { env } from "@/lib/config/env";
 
 export function isLiveMode(): boolean {
-  return process.env.LIVE_TACHI_ENABLED === "true" || process.env.PROOF_MODE === "live";
+  return env.liveEnabled();
 }
 
 /** Build the adapter for the current configuration. */
@@ -20,4 +21,9 @@ let cached: TachiAdapter | null = null;
 export function getTachiAdapter(): TachiAdapter {
   if (!cached) cached = createTachiAdapter();
   return cached;
+}
+
+/** Test helper: drop the cached adapter so mode flips take effect. */
+export function resetTachiAdapterCache(): void {
+  cached = null;
 }

@@ -11,6 +11,9 @@ export type CreditState =
 export type ExitStatus = "UNKNOWN" | "LOCKED" | "COUNTDOWN" | "AVAILABLE" | "EXITED";
 export type ProofVerification = "VERIFIED" | "INVALID" | "UNVERIFIED";
 
+/** Where a loan-health proof came from; surfaced in receipts and API responses. */
+export type ProofSource = "fixture" | "derived" | "oracle";
+
 export interface LoanHealthProof {
   positionId: string;
   network: string;
@@ -21,6 +24,12 @@ export interface LoanHealthProof {
   expiresAt: string;
   digest: string;
   verification: ProofVerification;
+  /** Provenance of the attestation. Unsigned derived/fixture proofs are labeled as such. */
+  source?: ProofSource;
+  /** Optional BIP-340 Schnorr signature over the 32-byte digest (hex). */
+  signature?: string;
+  /** X-only public key (32-byte hex) of the oracle/relay that signed the digest. */
+  oraclePubkey?: string;
 }
 
 export interface CreditPosition {

@@ -1,115 +1,182 @@
-import type { CreditPosition, DecisionReceipt, LoanHealthProof } from "./domain/types";
+import type { Action, CreditPosition, DecisionReceipt, LoanHealthProof } from "./domain/types";
+import { calculateCreditLimit } from "./domain/covenant";
 import { fixtureProof } from "./proofs/fixtures";
-import { db } from "./db/storage";
+import { db, seedDemoPosition } from "./db/storage";
+import { env } from "./config/env";
+
+/**
+ * Multi-position credit store.
+ *
+ * Positions are keyed by a deterministic id derived from the vault ref, so
+ * reconnecting the same vault RESTORES its position (debt, state, receipts)
+ * instead of clobbering it. Different vaults no longer interfere: the old
+ * single-global-position prototype behavior is gone.
+ *
+ * All persistence is awaited (no fire-and-forget writes): when a route returns
+ * a decision, the receipt and position update are durably queued to disk.
+ */
 
 /** Deterministic position id derived from a vault ref (alphanumerics only). */
 export function positionIdForVault(vaultRef: string): string {
-  return `pos_${vaultRef.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 16)}`;
+  return `pos_${vaultRef.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 32)}`;
 }
 
-// In-memory cache synced with persistent storage
-const position: CreditPosition = {
-  id: "pos_demo_01",
-  vaultRef: process.env.TACHI_VAULT_REF?.trim() || "vault:taurus:signet:drawbound-demo",
-  collateralSats: 5000,
-  debtUnits: 0,
-  creditLimitUnits: 500,
-  minHealthBps: 12500,
-  state: "COLLATERALIZED",
-  latestProof: fixtureProof("healthy"),
-  exitStatus: "LOCKED",
-  drawCount: 0,
-  nonce: 0,
-};
-
-const receipts: DecisionReceipt[] = [];
+const positions = new Map<string, CreditPosition>();
 const processedDraws = new Map<string, DecisionReceipt>();
+let loadPromise: Promise<void> | null = null;
 
-// Initialize memory from storage if present
-void db.getPosition("pos_demo_01").then((stored) => {
-  if (stored) Object.assign(position, stored);
-});
-void db.getReceipts().then((storedReceipts) => {
-  if (storedReceipts.length > 0) {
-    receipts.length = 0;
-    receipts.push(...storedReceipts.reverse());
+async function ensureLoaded(): Promise<void> {
+  if (!loadPromise) {
+    loadPromise = (async () => {
+      const stored = await db.listPositions();
+      if (stored.length === 0) {
+        const seed = seedDemoPosition();
+        await db.savePosition(seed);
+        positions.set(seed.id, structuredClone(seed));
+      } else {
+        for (const pos of stored) positions.set(pos.id, pos);
+      }
+      const draws = await db.getAllProcessedDraws();
+      for (const [fingerprint, receipt] of Object.entries(draws)) processedDraws.set(fingerprint, receipt);
+    })();
   }
-});
-
-export function getPosition(positionId = "pos_demo_01"): CreditPosition {
-  return structuredClone(position);
+  await loadPromise;
 }
 
-export function setPosition(next: CreditPosition): void {
-  Object.assign(position, next);
-  void db.savePosition(next);
+/** Stable idempotency key for a transition attempt (time-independent). */
+export function transitionFingerprint(positionId: string, action: Action, amount: number, nonce: number): string {
+  return `${positionId}:${action}:${amount}:${nonce}`;
 }
 
-export function getReceipts(positionId?: string): DecisionReceipt[] {
-  const list = positionId ? receipts.filter((r) => r.positionId === positionId) : receipts;
-  return structuredClone(list).reverse();
+// --- Positions ---
+
+export async function getPosition(positionId: string): Promise<CreditPosition | null> {
+  await ensureLoaded();
+  const pos = positions.get(positionId);
+  return pos ? structuredClone(pos) : null;
 }
 
-export function addReceipt(receipt: DecisionReceipt): void {
-  receipts.push(receipt);
-  void db.addReceipt(receipt);
+export class PositionNotFoundError extends Error {
+  constructor(positionId: string) {
+    super(`Unknown position: ${positionId}`);
+    this.name = "PositionNotFoundError";
+  }
 }
 
-export function getProcessedDraw(fingerprint: string): DecisionReceipt | undefined {
-  return processedDraws.get(fingerprint);
+export async function requirePosition(positionId: string): Promise<CreditPosition> {
+  const pos = await getPosition(positionId);
+  if (!pos) throw new PositionNotFoundError(positionId);
+  return pos;
 }
 
-export function rememberProcessedDraw(fingerprint: string, receipt: DecisionReceipt): void {
-  processedDraws.set(fingerprint, receipt);
-  void db.rememberProcessedDraw(fingerprint, receipt);
+export async function listPositions(): Promise<CreditPosition[]> {
+  await ensureLoaded();
+  return structuredClone([...positions.values()]);
 }
 
-export function setProof(proof: LoanHealthProof): void {
-  position.latestProof = proof;
-  void db.savePosition(position);
-  void db.saveProof(proof);
+export async function savePosition(next: CreditPosition): Promise<CreditPosition> {
+  await ensureLoaded();
+  positions.set(next.id, structuredClone(next));
+  await db.savePosition(next);
+  return structuredClone(next);
 }
 
-export function resetDemo(): CreditPosition {
-  Object.assign(position, {
-    debtUnits: 0,
-    state: "COLLATERALIZED",
-    latestProof: fixtureProof("healthy"),
-    exitStatus: "LOCKED",
-    drawCount: 0,
-    nonce: 0,
-  });
-  receipts.length = 0;
-  processedDraws.clear();
-  void db.reset();
-  return getPosition();
+// --- Receipts (db is the single source of truth) ---
+
+export async function getReceipts(positionId?: string): Promise<DecisionReceipt[]> {
+  return db.getReceipts(positionId);
 }
+
+export async function addReceipt(receipt: DecisionReceipt): Promise<void> {
+  await db.addReceipt(receipt);
+}
+
+// --- Idempotency ---
+
+export async function getProcessedDraw(fingerprint: string): Promise<DecisionReceipt | undefined> {
+  await ensureLoaded();
+  const receipt = processedDraws.get(fingerprint);
+  return receipt ? structuredClone(receipt) : undefined;
+}
+
+export async function rememberProcessedDraw(fingerprint: string, receipt: DecisionReceipt): Promise<void> {
+  await ensureLoaded();
+  processedDraws.set(fingerprint, structuredClone(receipt));
+  await db.rememberProcessedDraw(fingerprint, receipt);
+}
+
+// --- Proofs ---
+
+export async function setProof(positionId: string, proof: LoanHealthProof): Promise<void> {
+  await ensureLoaded();
+  const pos = positions.get(positionId);
+  if (!pos) throw new PositionNotFoundError(positionId);
+  pos.latestProof = proof;
+  await db.savePosition(pos);
+  await db.saveProof(proof);
+}
+
+/** Archive a proof artifact without touching position state (audit trail). */
+export async function archiveProof(proof: LoanHealthProof): Promise<void> {
+  await db.saveProof(proof);
+}
+
+// --- Connect / reset ---
 
 /**
- * Connect a vault and establish or retrieve its self-custodial position.
- * When `proof` is supplied (e.g. a live-derived HAT/RIP attestation from the verifier),
- * it is bound to the position; otherwise a fixture-healthy proof is minted as a fallback.
+ * Connect a vault: create its position or RESTORE the existing one.
+ *
+ * - Existing position: collateral is refreshed from the live read when one was
+ *   observed, debt/state/receipts are preserved (a reconnect is not a reset).
+ * - New position: seeded at the observed (or modeled) collateral with a credit
+ *   limit derived from the shared sats-per-unit model.
  */
-export function connectVault(
+export async function connectVault(
   vaultRef: string,
   collateralSats: number,
-  positionId?: string,
   proof?: LoanHealthProof,
-): CreditPosition {
-  const id = positionId || positionIdForVault(vaultRef);
-  Object.assign(position, {
+): Promise<CreditPosition> {
+  await ensureLoaded();
+  const id = positionIdForVault(vaultRef);
+  const existing = positions.get(id);
+
+  if (existing) {
+    if (collateralSats > 0) {
+      existing.collateralSats = collateralSats;
+      // Keep the invariant debt <= limit holdable even if the live read shrinks collateral.
+      existing.creditLimitUnits = Math.max(calculateCreditLimit(collateralSats), existing.debtUnits);
+    }
+    if (proof) existing.latestProof = proof;
+    await savePosition(existing);
+    return structuredClone(existing);
+  }
+
+  const collateral = collateralSats > 0 ? collateralSats : 5000;
+  const fresh: CreditPosition = {
     id,
     vaultRef,
-    collateralSats: collateralSats > 0 ? collateralSats : position.collateralSats || 5000,
+    collateralSats: collateral,
     debtUnits: 0,
+    creditLimitUnits: calculateCreditLimit(collateral),
+    minHealthBps: env.minHealthBps(),
     state: "COLLATERALIZED",
     latestProof: proof ?? fixtureProof("healthy", { positionId: id, collateralRef: vaultRef }),
     exitStatus: "LOCKED",
     drawCount: 0,
     nonce: 0,
-  });
-  receipts.length = 0;
+  };
+  await savePosition(fresh);
+  return structuredClone(fresh);
+}
+
+/** Admin/demo only: wipe every position and receipt back to the seeded demo. */
+export async function resetStore(): Promise<CreditPosition> {
+  await ensureLoaded();
+  positions.clear();
   processedDraws.clear();
-  void db.savePosition(position);
-  return getPosition();
+  await db.reset();
+  loadPromise = null;
+  await ensureLoaded();
+  const seed = positions.get("pos_demo_01") ?? seedDemoPosition();
+  return structuredClone(seed);
 }

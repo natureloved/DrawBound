@@ -3,6 +3,20 @@ import path from "node:path";
 import type { CreditPosition, DecisionReceipt, LoanHealthProof } from "../domain/types";
 import { fixtureProof } from "../proofs/fixtures";
 
+/**
+ * JSON-file persistence for the single-instance deployment.
+ *
+ * Guarantees:
+ * - Atomic writes (tmp file + rename).
+ * - No lost writes: a dirty flag re-pumps the writer after every mutation, so a
+ *   change that lands while a save is in flight is always persisted afterwards.
+ * - Full state reload on first access (positions, receipts, processed draws).
+ *
+ * Production swap path: this class is the only place that touches storage; a
+ * SQLite/Postgres implementation of the same method surface can replace it
+ * without any route or domain changes (see docs/deployment.md).
+ */
+
 export interface DatabaseState {
   positions: Record<string, CreditPosition>;
   receipts: DecisionReceipt[];
@@ -10,77 +24,108 @@ export interface DatabaseState {
   proofs: Record<string, LoanHealthProof>;
 }
 
-const DEFAULT_DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), ".data");
-const DB_FILE = path.join(DEFAULT_DATA_DIR, "drawbound.json");
+function dataDir(): string {
+  return process.env.DATA_DIR || path.join(process.cwd(), ".data");
+}
+
+function dbFile(): string {
+  return path.join(dataDir(), "drawbound.json");
+}
+
+export function seedDemoPosition(): CreditPosition {
+  return {
+    id: "pos_demo_01",
+    vaultRef: process.env.TACHI_VAULT_REF?.trim() || "vault:taurus:signet:drawbound-demo",
+    collateralSats: 5000,
+    debtUnits: 0,
+    creditLimitUnits: 500,
+    minHealthBps: 12500,
+    state: "COLLATERALIZED",
+    latestProof: fixtureProof("healthy"),
+    exitStatus: "LOCKED",
+    drawCount: 0,
+    nonce: 0,
+  };
+}
 
 export class StorageRepository {
   private memoryState: DatabaseState;
-  private isLoaded = false;
-  private savePromise: Promise<void> | null = null;
+  private loadPromise: Promise<void> | null = null;
+  private writeChain: Promise<void> = Promise.resolve();
+  private dirty = false;
+  private lastWriteError: unknown = null;
 
   constructor() {
     this.memoryState = {
-      positions: {
-        pos_demo_01: {
-          id: "pos_demo_01",
-          vaultRef: process.env.TACHI_VAULT_REF?.trim() || "vault:taurus:signet:drawbound-demo",
-          collateralSats: 5000,
-          debtUnits: 0,
-          creditLimitUnits: 500,
-          minHealthBps: 12500,
-          state: "COLLATERALIZED",
-          latestProof: fixtureProof("healthy"),
-          exitStatus: "LOCKED",
-          drawCount: 0,
-          nonce: 0,
-        },
-      },
+      positions: { pos_demo_01: seedDemoPosition() },
       receipts: [],
       processedDraws: {},
       proofs: {},
     };
   }
 
-  private async ensureLoaded(): Promise<void> {
-    if (this.isLoaded) return;
-    try {
-      await fs.mkdir(DEFAULT_DATA_DIR, { recursive: true });
-      const data = await fs.readFile(DB_FILE, "utf-8");
-      const parsed = JSON.parse(data) as Partial<DatabaseState>;
-      if (parsed.positions) this.memoryState.positions = parsed.positions;
-      if (parsed.receipts) this.memoryState.receipts = parsed.receipts;
-      if (parsed.processedDraws) this.memoryState.processedDraws = parsed.processedDraws;
-      if (parsed.proofs) this.memoryState.proofs = parsed.proofs;
-    } catch {
-      // File doesn't exist yet or invalid JSON, initialize with defaults
-      await this.save();
+  private ensureLoaded(): Promise<void> {
+    if (!this.loadPromise) {
+      this.loadPromise = (async () => {
+        try {
+          await fs.mkdir(dataDir(), { recursive: true });
+          const data = await fs.readFile(dbFile(), "utf-8");
+          const parsed = JSON.parse(data) as Partial<DatabaseState>;
+          if (parsed.positions && Object.keys(parsed.positions).length > 0) this.memoryState.positions = parsed.positions;
+          if (parsed.receipts) this.memoryState.receipts = parsed.receipts;
+          if (parsed.processedDraws) this.memoryState.processedDraws = parsed.processedDraws;
+          if (parsed.proofs) this.memoryState.proofs = parsed.proofs;
+        } catch {
+          // No file yet (or unreadable): persist the seeded defaults.
+          await this.save();
+        }
+      })();
     }
-    this.isLoaded = true;
+    return this.loadPromise;
   }
 
   private async save(): Promise<void> {
     try {
-      await fs.mkdir(DEFAULT_DATA_DIR, { recursive: true });
-      const tempPath = `${DB_FILE}.tmp`;
+      await fs.mkdir(dataDir(), { recursive: true });
+      const tempPath = `${dbFile()}.tmp`;
       await fs.writeFile(tempPath, JSON.stringify(this.memoryState, null, 2), "utf-8");
-      await fs.rename(tempPath, DB_FILE);
+      await fs.rename(tempPath, dbFile());
+      this.lastWriteError = null;
     } catch (err) {
+      this.lastWriteError = err;
       console.error("[storage] Failed to persist database state:", err);
     }
   }
 
-  private queueSave(): void {
-    if (!this.savePromise) {
-      this.savePromise = Promise.resolve().then(async () => {
-        await this.save();
-        this.savePromise = null;
-      });
-    }
+  /**
+   * Serialize every write through a single promise chain. Concurrent mutations
+   * coalesce (the dirty flag), in-flight writes never overlap on the tmp file,
+   * and awaiting the result means the HTTP response is only sent after the
+   * decision is durably on disk.
+   */
+  private persist(): Promise<void> {
+    this.dirty = true;
+    this.writeChain = this.writeChain.then(async () => {
+      if (!this.dirty) return;
+      this.dirty = false;
+      await this.save();
+    });
+    return this.writeChain;
+  }
+
+  /** Await all pending writes (used before process exit or in tests). */
+  async flush(): Promise<void> {
+    await this.writeChain;
+    if (this.dirty) await this.flush();
+  }
+
+  writeError(): unknown {
+    return this.lastWriteError;
   }
 
   // --- Positions ---
 
-  async getPosition(positionId = "pos_demo_01"): Promise<CreditPosition | null> {
+  async getPosition(positionId: string): Promise<CreditPosition | null> {
     await this.ensureLoaded();
     const pos = this.memoryState.positions[positionId];
     return pos ? structuredClone(pos) : null;
@@ -100,7 +145,7 @@ export class StorageRepository {
   async savePosition(position: CreditPosition): Promise<CreditPosition> {
     await this.ensureLoaded();
     this.memoryState.positions[position.id] = structuredClone(position);
-    this.queueSave();
+    await this.persist();
     return structuredClone(position);
   }
 
@@ -117,7 +162,7 @@ export class StorageRepository {
   async addReceipt(receipt: DecisionReceipt): Promise<void> {
     await this.ensureLoaded();
     this.memoryState.receipts.push(structuredClone(receipt));
-    this.queueSave();
+    await this.persist();
   }
 
   // --- Idempotency / Processed Draws ---
@@ -128,10 +173,15 @@ export class StorageRepository {
     return r ? structuredClone(r) : undefined;
   }
 
+  async getAllProcessedDraws(): Promise<Record<string, DecisionReceipt>> {
+    await this.ensureLoaded();
+    return structuredClone(this.memoryState.processedDraws);
+  }
+
   async rememberProcessedDraw(fingerprint: string, receipt: DecisionReceipt): Promise<void> {
     await this.ensureLoaded();
     this.memoryState.processedDraws[fingerprint] = structuredClone(receipt);
-    this.queueSave();
+    await this.persist();
   }
 
   // --- Proofs ---
@@ -139,31 +189,18 @@ export class StorageRepository {
   async saveProof(proof: LoanHealthProof): Promise<void> {
     await this.ensureLoaded();
     this.memoryState.proofs[proof.digest] = structuredClone(proof);
-    this.queueSave();
+    await this.persist();
   }
 
-  // --- State Reset (for test / demo admin) ---
+  // --- State Reset (admin/demo only; route is token-gated) ---
 
   async reset(): Promise<void> {
-    this.memoryState.positions = {
-      pos_demo_01: {
-        id: "pos_demo_01",
-        vaultRef: process.env.TACHI_VAULT_REF?.trim() || "vault:taurus:signet:drawbound-demo",
-        collateralSats: 5000,
-        debtUnits: 0,
-        creditLimitUnits: 500,
-        minHealthBps: 12500,
-        state: "COLLATERALIZED",
-        latestProof: fixtureProof("healthy"),
-        exitStatus: "LOCKED",
-        drawCount: 0,
-        nonce: 0,
-      },
-    };
+    await this.ensureLoaded();
+    this.memoryState.positions = { pos_demo_01: seedDemoPosition() };
     this.memoryState.receipts = [];
     this.memoryState.processedDraws = {};
     this.memoryState.proofs = {};
-    await this.save();
+    await this.persist();
   }
 }
 

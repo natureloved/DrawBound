@@ -2,6 +2,7 @@ import type { LoanHealthProof } from "../domain/types";
 import { normalizeProof } from "./normalize";
 import { readTachiSnapshot } from "../tachi/read-only";
 import { deriveHealthProof } from "./derive";
+import { env } from "../config/env";
 
 export interface OracleProofRequest {
   vaultRef: string;
@@ -9,7 +10,7 @@ export interface OracleProofRequest {
   network?: string;
   /**
    * Current drawn debt in credit units. The verifier converts collateral sats and debt
-   * units through the shared COLLATERAL_SATS_PER_UNIT ratio to derive a real health ratio,
+   * units through the shared sats-per-unit ratio to derive a real health ratio,
    * instead of reporting a constant "healthy" value.
    */
   debtUnits?: number;
@@ -22,22 +23,27 @@ export interface OracleProofRequest {
   collateralSats?: number;
 }
 
-/** Ceiling for the reported health factor (650% = "very over-collateralized, no draw pressure"). */
-const MAX_HEALTH_BPS = 65000;
-
 /**
- * Live Oracle Client for HAT / RIP Health Attestation
- * In production mode, requests fresh signed attestation from the HAT/RIP oracle network.
- * Falls back to reading live locked collateral state from the Tachi node and constructing
- * a verified real-time proof whose health ratio reflects the actual collateral vs debt.
+ * Fetches the freshest loan-health attestation available, in strict preference order:
+ *
+ * 1. EXTERNAL ORACLE (source: "oracle") — when HAT_ORACLE_URL is configured, the
+ *    remote HAT/RIP oracle is asked for a signed attestation. The response must
+ *    carry verification:"VERIFIED" plus (in strict mode) a Schnorr signature from
+ *    an allowlisted oracle key; verifyNormalizedProof enforces that downstream.
+ * 2. SERVER-DERIVED FROM A LIVE READ (source: "derived") — real locked-VTXO state
+ *    is read from the Tachi daemon and the health ratio is computed against the
+ *    position's actual debt. This is honest self-attestation: it reflects real
+ *    chain state, but the computation is ours, not an independent oracle's.
+ * 3. SERVER-DERIVED FROM MODELED COLLATERAL (source: "derived") — fallback when
+ *    the network read fails (e.g. offline tests); still debt-aware, never a
+ *    constant "healthy".
  */
 export async function fetchLiveLoanHealthProof(
   request: OracleProofRequest,
 ): Promise<LoanHealthProof> {
-  const network = request.network ?? process.env.TACHI_NETWORK ?? "signet";
-  const oracleUrl = process.env.HAT_ORACLE_URL;
+  const network = request.network ?? env.network();
+  const oracleUrl = process.env.HAT_ORACLE_URL?.trim();
 
-  // 1. If an external HAT oracle endpoint is configured, query it directly
   if (oracleUrl) {
     try {
       const response = await fetch(`${oracleUrl}/v1/attestations/health`, {
@@ -54,14 +60,18 @@ export async function fetchLiveLoanHealthProof(
 
       if (response.ok) {
         const data = await response.json();
-        return normalizeProof(data);
+        const proof = normalizeProof({ ...(data as object), source: "oracle" });
+        // A remote attestation that does not claim VERIFIED (or fails strict
+        // signature checks downstream) must not silently degrade to a derived
+        // proof with a better tag: surface it and let the gate decide.
+        return proof;
       }
+      console.warn(`[oracle] Remote oracle returned ${response.status}; falling back to Tachi node reading`);
     } catch (err) {
       console.warn("[oracle] Remote oracle request failed, falling back to Tachi node reading:", err);
     }
   }
 
-  // 2. Derive live proof from the real Tachi node state
   try {
     const snapshot = await readTachiSnapshot({
       network: network === "regtest" ? "regtest" : "signet",
@@ -84,8 +94,6 @@ export async function fetchLiveLoanHealthProof(
       { network },
     );
   } catch {
-    // 3. Fallback for testing environments: derive from modeled collateral + current debt
-    // (never a constant "healthy" value: the ratio must still reflect real debt).
     return deriveHealthProof(
       {
         id: request.positionId,

@@ -503,14 +503,14 @@ export default function Home() {
                 </div>
                 <div className="code-block p-5 mb-5">
                   <div>
-                    <span className="code-comment">// enforced at issuance, not at audit</span>
+                    <span className="code-comment">{"// enforced at issuance, not at audit"}</span>
                   </div>
                   <div>
                     <span className="code-keyword">assert</span>(credit_drawn <span className="code-keyword">&lt;=</span>{" "}
                     proof_verified);
                   </div>
                   <div className="mt-2">
-                    <span className="code-comment">// credit cannot outrun proof</span>
+                    <span className="code-comment">{"// credit cannot outrun proof"}</span>
                   </div>
                   <div>
                     <span className="code-keyword">require</span>(proof.<span className="code-fn">fresh</span>(){" "}
@@ -713,19 +713,19 @@ export default function Home() {
                 </div>
                 <div className="code-block p-5 overflow-x-auto">
                   <pre style={{ margin: 0, whiteSpace: "pre" }}>
-                    <span className="code-comment">// DrawBound issuance: proof is the bound</span>
+                    <span className="code-comment">{"// DrawBound issuance: proof is the bound"}</span>
                     {"\n"}
                     <span className="code-keyword">function</span> <span className="code-fn">draw</span>(uint256 amount){" "}
                     <span className="code-keyword">external</span> {"{"}
                     {"\n"}    Proof.<span className="code-fn">Attestation</span> memory att = proof.
                     <span className="code-fn">current</span>();
-                    {"\n"}    {"\n"}    <span className="code-comment">// proof must be live: stale proof halts issuance</span>
+                    {"\n"}    {"\n"}    <span className="code-comment">{"// proof must be live: stale proof halts issuance"}</span>
                     {"\n"}    <span className="code-keyword">require</span>(
                     {"\n"}        block.timestamp - att.timestamp <span className="code-keyword">&lt;</span>{" "}
                     <span className="code-number">FRESHNESS</span>,
                     {"\n"}        <span className="code-string">&quot;proof stale&quot;</span>
                     {"\n"}    );
-                    {"\n"}    {"\n"}    <span className="code-comment">// the bound: credit cannot exceed verified collateral</span>
+                    {"\n"}    {"\n"}    <span className="code-comment">{"// the bound: credit cannot exceed verified collateral"}</span>
                     {"\n"}    uint256 bound = (att.collateral <span className="code-keyword">*</span> LTV) /{" "}
                     <span className="code-number">BASIS</span>;
                     {"\n"}    uint256 projected = positions[msg.sender].drawn <span className="code-keyword">+</span> amount;

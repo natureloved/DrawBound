@@ -1,7 +1,9 @@
 import type { TachiAdapter } from "./adapter";
 import { TachiHttpClient, type TachiLockedVtxosResponse } from "./http-client";
+import { env } from "@/lib/config/env";
 import { policy } from "@/lib/security/policy";
 import { redactSecret } from "@/lib/security/redact";
+import { isSyntheticTransition } from "@/lib/wallet/transition-builder";
 
 /**
  * Minimal reader surface the live adapter needs. `TachiHttpClient` satisfies it
@@ -12,19 +14,32 @@ export interface VaultReader {
   broadcastTxSync(tx: string): Promise<unknown>;
 }
 
+/** A real Bitcoin transaction is at least ~100 bytes; refuse anything token-sized. */
+const MIN_REAL_TX_HEX_LENGTH = 120;
+
+function looksLikeRealTransaction(txHex: string): boolean {
+  return (
+    txHex.length >= MIN_REAL_TX_HEX_LENGTH &&
+    txHex.length % 2 === 0 &&
+    /^[0-9a-fA-F]+$/.test(txHex) &&
+    !isSyntheticTransition(txHex)
+  );
+}
+
 /**
  * Real Tachi/SatVM-backed adapter. Reads resolve the actual locked TAURUS vault
  * state from the live signet/regtest daemon; writes broadcast a caller-supplied,
  * already-signed transaction.
  *
  * Safety: this adapter is fail-closed. It will never create or fund a vault, it
- * will not broadcast an unsigned transition, and it refuses mainnet unless every
- * gate is explicitly enabled. A live transition therefore requires:
+ * will not broadcast an unsigned or synthetic demo transition, and it refuses
+ * mainnet unless every gate is explicitly enabled. A live transition requires:
  *   1. LIVE_TACHI_ENABLED=true (or PROOF_MODE=live),
  *   2. a testnet network (signet/regtest),
  *   3. the kill switch respected,
  *   4. a vault in ALLOWED_VAULT_REFS (or TACHI_VAULT_REF),
- *   5. a signed txHex produced by the operator's Taurus wallet.
+ *   5. a REAL signed txHex produced by the operator's Taurus wallet — the
+ *      synthetic fixture payload (magic `dbdemo01`) is rejected outright.
  */
 export class LiveTachiAdapter implements TachiAdapter {
   private readonly reader: VaultReader;
@@ -37,16 +52,13 @@ export class LiveTachiAdapter implements TachiAdapter {
   }
 
   private assertAllowedVault(vaultRef: string): void {
-    const allowed = (process.env.ALLOWED_VAULT_REFS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
+    const allowed = env.allowedVaultRefs();
     if (allowed.length > 0 && !allowed.includes(vaultRef)) {
       throw new Error(`Vault ${vaultRef} is not in ALLOWED_VAULT_REFS; refusing live operation`);
     }
   }
 
-  async createVault(input: { owner: string; collateralSats: number }): Promise<{ vaultRef: string }> {
+  async createVault(_input: { owner: string; collateralSats: number }): Promise<{ vaultRef: string }> {
     const configured = process.env.TACHI_VAULT_REF?.trim();
     if (configured) {
       this.assertAllowedVault(configured);
@@ -78,11 +90,23 @@ export class LiveTachiAdapter implements TachiAdapter {
     if (policy.network === "mainnet" && !policy.mainnetAllowed) {
       throw new Error("Live mainnet credit transitions are disabled");
     }
+    if (env.killSwitch()) {
+      throw new Error("Kill switch is engaged (KILL_SWITCH=true); live credit transitions are disabled");
+    }
     if (!input.txHex || typeof input.txHex !== "string" || input.txHex.length === 0) {
       throw new Error(
         "Live credit transition requires a signed txHex built via the Taurus wallet-aggregator; " +
           "Drawbound will not broadcast an unsigned transition (fail closed).",
       );
+    }
+    if (isSyntheticTransition(input.txHex)) {
+      throw new Error(
+        "Synthetic demo transition rejected: live mode broadcasts real Bitcoin transactions only. " +
+          "Build and sign the txHex with the Taurus wallet-aggregator (docs/tachi-integration.md).",
+      );
+    }
+    if (!looksLikeRealTransaction(input.txHex)) {
+      throw new Error("txHex is not a plausible serialized Bitcoin transaction (hex, length); refusing to broadcast");
     }
     if (process.env.DEBUG_TACHI === "true") {
       console.log(`[tachi] broadcasting ${input.action} transition for ${input.positionId} tx=${redactSecret(input.txHex)}`);

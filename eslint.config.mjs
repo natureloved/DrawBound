@@ -1,7 +1,7 @@
 import next from "eslint-config-next/core-web-vitals";
 import ts from "eslint-config-next/typescript";
 
-export default [
+const config = [
   {
     ignores: [
       ".next/**",
@@ -20,8 +20,10 @@ export default [
       // Prototype-to-product codebase: unused vars are errors, underscore-prefixed are intentional.
       "@typescript-eslint/no-unused-vars": [
         "error",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
       ],
     },
   },
 ];
+
+export default config;

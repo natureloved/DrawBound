@@ -2,18 +2,43 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import type { CreditPosition, DecisionReceipt, LoanHealthProof } from "@/lib/domain/types";
+import type { CreditPosition, DecisionReceipt } from "@/lib/domain/types";
 import type { TachiReadOnlySnapshot } from "@/lib/tachi/read-only";
-import { signTransitionClientSide } from "@/lib/wallet/transition-builder";
+import { generateSessionKeypair } from "@/lib/wallet/canonical";
+import { signTransitionRequest } from "@/lib/wallet/transition-builder";
+
+/**
+ * Vault terminal — self-custodial session flow.
+ *
+ * The browser generates an ephemeral Schnorr keypair on connect, registers the
+ * public key with the server, and signs every draw/repay/unlock over the
+ * canonical message DrawBound:v1:<positionId>:<vaultRef>:<action>:<amount>:<nonce>.
+ * The private key never leaves this device. In LIVE mode, actions additionally
+ * require a real Taurus-signed txHex pasted into the Advanced box (the server
+ * refuses to broadcast anything synthetic).
+ */
 
 type ApiResult = {
   position?: CreditPosition;
   receipt?: DecisionReceipt;
   decision?: "ALLOW" | "DENY";
   reason?: string;
-  proof?: LoanHealthProof;
+  error?: string;
+  detail?: string;
   idempotent?: boolean;
 };
+
+interface StoredSession {
+  vaultRef: string;
+  positionId: string;
+  sessionToken: string;
+  privateKey: string;
+  publicKey: string;
+}
+
+const SESSION_KEY = "drawbound:session";
+const SESSION_HEADER = "x-drawbound-session";
+const DEMO_VAULT = "tb1p9kkv8c66zf8qsz9kd9nq2n3fxrytcrde8cae8qzu9ahwlfv92fyqa4mzx3";
 
 const formatDate = (value?: string) =>
   value
@@ -29,112 +54,206 @@ const formatDate = (value?: string) =>
 const formatHealth = (bps?: number) => (bps == null ? "-" : `${(bps / 100).toFixed(2)}%`);
 
 export default function VaultPage() {
+  const [session, setSession] = useState<StoredSession | null>(null);
   const [position, setPosition] = useState<CreditPosition | null>(null);
   const [receipts, setReceipts] = useState<DecisionReceipt[]>([]);
-  const [adapterMode, setAdapterMode] = useState("LIVE");
+  const [adapterMode, setAdapterMode] = useState("fixture");
   const [amount, setAmount] = useState("100");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "allow" | "deny" | "info"; text: string } | null>(null);
   const [tachiSnapshot, setTachiSnapshot] = useState<TachiReadOnlySnapshot | null>(null);
   const [tachiBusy, setTachiBusy] = useState(false);
   const [tachiError, setTachiError] = useState<string | null>(null);
-  const [connectedVault, setConnectedVault] = useState<string | null>(null);
   const [vaultInput, setVaultInput] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [customTxHex, setCustomTxHex] = useState("");
   const [refreshingProof, setRefreshingProof] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(0);
+
+  const isLive = adapterMode === "live";
+
+  // Keeps freshness checks honest without calling Date.now() during render.
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const authHeaders = useCallback(
+    (extra?: Record<string, string>): Record<string, string> => ({
+      "content-type": "application/json",
+      ...(session?.sessionToken ? { [SESSION_HEADER]: session.sessionToken } : {}),
+      ...extra,
+    }),
+    [session],
+  );
 
   const refresh = useCallback(async () => {
     try {
-      const [p, r] = await Promise.all([fetch("/api/positions"), fetch("/api/receipts")]);
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      const storedRaw = window.localStorage.getItem(SESSION_KEY);
+      const stored: StoredSession | null = storedRaw ? (JSON.parse(storedRaw) as StoredSession) : null;
+      if (stored?.sessionToken) headers[SESSION_HEADER] = stored.sessionToken;
+      const [p, r] = await Promise.all([
+        fetch("/api/positions", { headers, cache: "no-store" }),
+        fetch("/api/receipts", { headers, cache: "no-store" }),
+      ]);
       if (!p.ok || !r.ok) throw new Error(`positions ${p.status} / receipts ${r.status}`);
       const positionData = await p.json();
       const receiptData = await r.json();
-      setPosition(positionData.position);
-      setAdapterMode(String(positionData.adapterMode ?? "live").toUpperCase());
+      setPosition(positionData.position ?? null);
+      setAdapterMode(String(positionData.adapterMode ?? "fixture").toLowerCase());
       setReceipts(receiptData.receipts ?? []);
+      setNowMs(Date.now());
     } catch {
-      // background sync
+      // background sync failure is non-fatal; the next action surfaces errors
     }
   }, []);
 
-  const run = async (path: string, body?: Record<string, unknown>) => {
-    setBusy(true);
-    setNotice(null);
-    try {
-      const response = await fetch(path, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      const data = (await response.json()) as ApiResult;
-      if (data.position) setPosition(data.position);
-      if (data.receipt) {
-        setReceipts((current) =>
-          data.idempotent || current.some((r) => r.id === data.receipt!.id)
-            ? current
-            : [data.receipt!, ...current],
-        );
-      }
-      if (data.decision) {
-        setNotice({
-          tone: data.decision === "ALLOW" ? "allow" : "deny",
-          text: data.receipt?.reason ?? data.reason ?? data.decision,
-        });
-      }
-      return data;
-    } catch {
-      setNotice({ tone: "deny", text: "Request failed closed; no state transition applied" });
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const refreshLiveProof = useCallback(async () => {
-    setRefreshingProof(true);
-    try {
-      await run("/api/proofs", { live: true });
-      await refresh();
-      setNotice({ tone: "allow", text: "Fetched fresh HAT/RIP health proof attestation" });
-    } finally {
-      setRefreshingProof(false);
-    }
-  }, [run, refresh]);
-
+  // Restore a stored session on mount and validate it server-side.
   useEffect(() => {
-    void refresh();
+    let cancelled = false;
+    const restore = async () => {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) {
+        await refresh();
+        return;
+      }
+      let stored: StoredSession | null = null;
+      try {
+        stored = JSON.parse(raw) as StoredSession;
+      } catch {
+        window.localStorage.removeItem(SESSION_KEY);
+        await refresh();
+        return;
+      }
+      try {
+        const res = await fetch("/api/positions", {
+          headers: { [SESSION_HEADER]: stored.sessionToken },
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        if (res.status === 401) {
+          // Server restarted or session expired: drop it and show the connect panel.
+          window.localStorage.removeItem(SESSION_KEY);
+          await refresh();
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (!data.position) {
+          window.localStorage.removeItem(SESSION_KEY);
+          await refresh();
+          return;
+        }
+        setSession(stored);
+        setPosition(data.position);
+        setAdapterMode(String(data.adapterMode ?? "fixture").toLowerCase());
+        setNowMs(Date.now());
+        const receiptsRes = await fetch("/api/receipts", { headers: { [SESSION_HEADER]: stored.sessionToken }, cache: "no-store" });
+        if (receiptsRes.ok) {
+          const receiptData = await receiptsRes.json();
+          if (!cancelled) setReceipts(receiptData.receipts ?? []);
+        }
+      } catch {
+        if (!cancelled) await refresh();
+      }
+    };
+    void restore();
+    return () => {
+      cancelled = true;
+    };
   }, [refresh]);
 
+  const run = useCallback(
+    async (path: string, body?: Record<string, unknown>) => {
+      setBusy(true);
+      setNotice(null);
+      try {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: authHeaders(),
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const data = (await response.json()) as ApiResult;
+        if (response.status === 401 || response.status === 403) {
+          setNotice({
+            tone: "deny",
+            text: data.detail ?? data.error ?? "Session rejected; please reconnect your vault",
+          });
+          if (response.status === 401) {
+            window.localStorage.removeItem(SESSION_KEY);
+            setSession(null);
+          }
+          return data;
+        }
+        if (data.position) setPosition(data.position);
+        if (data.receipt) {
+          setReceipts((current) =>
+            data.idempotent || current.some((r) => r.id === data.receipt!.id)
+              ? current
+              : [data.receipt!, ...current],
+          );
+        }
+        if (data.decision) {
+          setNotice({
+            tone: data.decision === "ALLOW" ? "allow" : "deny",
+            text: `${data.decision}${data.idempotent ? " (idempotent replay)" : ""}: ${data.receipt?.reason ?? data.reason ?? ""}`,
+          });
+        } else if (data.error) {
+          setNotice({ tone: "deny", text: data.detail ?? data.error });
+        }
+        return data;
+      } catch {
+        setNotice({ tone: "deny", text: "Request failed closed; no state transition applied" });
+        return null;
+      } finally {
+        setBusy(false);
+        setNowMs(Date.now());
+      }
+    },
+    [authHeaders],
+  );
+
   const connect = useCallback(
-    async (ref: string, silent = false) => {
+    async (ref: string) => {
       const vaultRef = ref.trim();
       if (!vaultRef) return;
       setConnecting(true);
       setConnectError(null);
       try {
+        // Ephemeral browser keypair: the private key stays on this device.
+        const keypair = generateSessionKeypair();
         const response = await fetch("/api/wallet/connect", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ vaultRef }),
+          body: JSON.stringify({ vaultRef, sessionPublicKey: keypair.publicKey }),
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error ?? "Wallet connection failed");
-        window.localStorage.setItem("drawbound:vault", vaultRef);
-        setConnectedVault(vaultRef);
+        if (!response.ok) throw new Error((data as ApiResult).detail ?? (data as ApiResult).error ?? "Wallet connection failed");
+        const stored: StoredSession = {
+          vaultRef,
+          positionId: String((data as { position?: CreditPosition }).position?.id ?? ""),
+          sessionToken: String((data as { sessionToken?: string }).sessionToken ?? ""),
+          privateKey: keypair.privateKey,
+          publicKey: keypair.publicKey,
+        };
+        if (!stored.sessionToken) throw new Error("Server did not return a session token");
+        window.localStorage.setItem(SESSION_KEY, JSON.stringify(stored));
+        setSession(stored);
+        setNotice({
+          tone: "allow",
+          text: (data as { restored?: boolean }).restored
+            ? `Session restored for vault · live locked collateral: ${(data as { lockedSats?: number }).lockedSats?.toLocaleString() ?? "n/a"} sats`
+            : `Connected · live locked collateral: ${(data as { lockedSats?: number }).lockedSats?.toLocaleString() ?? "n/a"} sats`,
+        });
         await refresh();
-        if (!silent) {
-          setNotice({
-            tone: "allow",
-            text: `Connected to vault : Live locked collateral: ${data.lockedSats?.toLocaleString() ?? "5,000"} sats`,
-          });
-        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Wallet connection failed";
         setConnectError(message);
-        if (!silent) setNotice({ tone: "deny", text: message });
+        setNotice({ tone: "deny", text: message });
       } finally {
         setConnecting(false);
       }
@@ -143,15 +262,18 @@ export default function VaultPage() {
   );
 
   const disconnect = useCallback(async () => {
-    window.localStorage.removeItem("drawbound:vault");
-    setConnectedVault(null);
+    try {
+      await fetch("/api/wallet/disconnect", { method: "POST", headers: authHeaders() });
+    } catch {
+      // best effort revocation; local state is cleared regardless
+    }
+    window.localStorage.removeItem(SESSION_KEY);
+    setSession(null);
+    setPosition(null);
+    setReceipts([]);
+    setNotice({ tone: "info", text: "Session disconnected; the position remains on record for this vault" });
     await refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem("drawbound:vault");
-    if (saved) void connect(saved, true);
-  }, [connect]);
+  }, [authHeaders, refresh]);
 
   const copyToClipboard = (text: string, key: string) => {
     void navigator.clipboard.writeText(text);
@@ -175,65 +297,70 @@ export default function VaultPage() {
     }
   };
 
-  const handleDraw = async () => {
+  const refreshLiveProof = useCallback(async () => {
+    setRefreshingProof(true);
+    try {
+      await run("/api/proofs", { live: true });
+      await refresh();
+    } finally {
+      setRefreshingProof(false);
+    }
+  }, [run, refresh]);
+
+  /** Sign the canonical transition message with the session key and post the action. */
+  const submitSigned = useCallback(
+    async (path: string, action: "DRAW" | "REPAY" | "UNLOCK", actionAmount: number) => {
+      if (!session || !position) {
+        setNotice({ tone: "deny", text: "Connect your vault to authorize transitions" });
+        return;
+      }
+      const nonce = position.nonce;
+      const signature = signTransitionRequest(session.privateKey, {
+        positionId: position.id,
+        vaultRef: position.vaultRef,
+        action,
+        amount: actionAmount,
+        nonce,
+      });
+      const txHex = customTxHex.trim();
+      await run(path, {
+        amount: actionAmount,
+        nonce,
+        signature,
+        ...(txHex ? { txHex } : {}),
+      });
+    },
+    [session, position, customTxHex, run],
+  );
+
+  const handleDraw = () => {
     if (!position) return;
     const drawAmount = Number(amount);
-    const txHex = await signTransitionClientSide(
-      {
-        action: "DRAW",
-        positionId: position.id,
-        vaultRef: position.vaultRef,
-        amount: drawAmount,
-        nonce: position.nonce,
-        proofDigest: position.latestProof?.digest,
-      },
-      customTxHex,
-    );
-
-    await run("/api/draw", { amount: drawAmount, txHex });
+    if (!Number.isInteger(drawAmount) || drawAmount <= 0) {
+      setNotice({ tone: "deny", text: "Draw amount must be a positive whole number of units" });
+      return;
+    }
+    void submitSigned("/api/draw", "DRAW", drawAmount);
   };
 
-  const handleRepay = async () => {
+  const handleRepay = () => {
     if (!position || !position.debtUnits) return;
-    const txHex = await signTransitionClientSide(
-      {
-        action: "REPAY",
-        positionId: position.id,
-        vaultRef: position.vaultRef,
-        amount: position.debtUnits,
-        nonce: position.nonce,
-      },
-      customTxHex,
-    );
-
-    await run("/api/repay", { amount: position.debtUnits, txHex });
+    void submitSigned("/api/repay", "REPAY", position.debtUnits);
   };
 
-  const handleUnlock = async () => {
+  const handleUnlock = () => {
     if (!position) return;
-    const txHex = await signTransitionClientSide(
-      {
-        action: "UNLOCK",
-        positionId: position.id,
-        vaultRef: position.vaultRef,
-        amount: 0,
-        nonce: position.nonce,
-      },
-      customTxHex,
-    );
-
-    await run("/api/unlock", { txHex });
+    void submitSigned("/api/unlock", "UNLOCK", 0);
   };
 
   const proof = position?.latestProof;
-  const remaining = position ? position.creditLimitUnits - position.debtUnits : 0;
-  const isFresh = proof ? new Date(proof.expiresAt).getTime() > Date.now() : false;
+  const isFresh = proof && nowMs > 0 ? new Date(proof.expiresAt).getTime() > nowMs : false;
   const proofStatus =
     proof && proof.verification === "VERIFIED" && isFresh && proof.healthBps >= (position?.minHealthBps ?? 12500)
       ? "HEALTHY"
       : "BLOCKED";
   const progress = useMemo(
-    () => (position ? Math.min(100, (position.debtUnits / position.creditLimitUnits) * 100) : 0),
+    () => (position && position.creditLimitUnits > 0 ? Math.min(100, (position.debtUnits / position.creditLimitUnits) * 100) : 0),
     [position],
   );
 
@@ -286,11 +413,11 @@ export default function VaultPage() {
 
           <div className="flex items-center gap-3">
             <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-mono text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-lg bg-[var(--surface)]">
-              <span className="pulse-dot" /> SIGNET · {adapterMode}
+              <span className="pulse-dot" /> SIGNET · {isLive ? "LIVE" : "FIXTURE"}
             </span>
             <button
               onClick={refreshLiveProof}
-              disabled={refreshingProof || busy}
+              disabled={refreshingProof || busy || !session}
               className="btn-ghost px-3 py-1.5 rounded-lg text-xs font-mono"
             >
               {refreshingProof ? "Refreshing..." : "↻ Refresh Oracle"}
@@ -318,11 +445,14 @@ export default function VaultPage() {
               Lock native BTC in non-custodial Taurus Taproot vaults and authorize proof-causal SatVM credit transitions.
             </p>
           </div>
-          {connectedVault && (
+          {session && (
             <div className="mt-4 md:mt-0 text-right">
               <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Session Identity</div>
               <div className="text-xs font-mono text-[var(--gold)] mt-0.5">
-                {connectedVault.slice(0, 14)}…{connectedVault.slice(-8)}
+                {session.vaultRef.slice(0, 14)}…{session.vaultRef.slice(-8)}
+              </div>
+              <div className="text-[10px] font-mono text-[var(--text-dim)] mt-0.5">
+                Schnorr session · key held on device
               </div>
             </div>
           )}
@@ -354,29 +484,35 @@ export default function VaultPage() {
                 <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">
                   TAURUS VAULT / WALLET
                 </div>
-                <span className={`status-tag ${connectedVault ? "online" : "idle"}`}>
-                  {connectedVault ? "● CONNECTED" : "READY"}
+                <span className={`status-tag ${session ? "online" : "idle"}`}>
+                  {session ? "● CONNECTED" : "READY"}
                 </span>
               </div>
 
-              {connectedVault ? (
+              {session ? (
                 <div className="space-y-4">
                   <div>
                     <div className="flex justify-between items-center text-xs text-[var(--text-muted)] mb-2 font-mono">
                       <span>Connected Taurus Vault</span>
                       <button
-                        onClick={() => copyToClipboard(connectedVault, "vault")}
+                        onClick={() => copyToClipboard(session.vaultRef, "vault")}
                         className="text-[var(--gold)] hover:text-[var(--gold-soft)] text-xs font-mono transition-colors"
                       >
                         {copiedKey === "vault" ? "Copied ✓" : "Copy Address"}
                       </button>
                     </div>
                     <code className="text-xs font-mono text-[var(--gold)] break-all block bg-[#090807] p-3.5 rounded-lg border border-[var(--border)] leading-relaxed">
-                      {connectedVault}
+                      {session.vaultRef}
+                    </code>
+                  </div>
+                  <div>
+                    <div className="text-xs text-[var(--text-muted)] mb-2 font-mono">Session public key</div>
+                    <code className="text-[10px] font-mono text-[var(--text-dim)] break-all block bg-[#090807] p-3 rounded-lg border border-[var(--border-soft)]">
+                      {session.publicKey}
                     </code>
                   </div>
                   <button onClick={disconnect} className="btn-ghost w-full py-2.5 rounded-lg text-xs font-mono">
-                    Disconnect Vault
+                    Disconnect Session
                   </button>
                 </div>
               ) : (
@@ -386,7 +522,7 @@ export default function VaultPage() {
                       Taurus Vault Reference (P2TR)
                     </label>
                     <button
-                      onClick={() => setVaultInput("tb1p9kkv8c66zf8qsz9kd9nq2n3fxrytcrde8cae8qzu9ahwlfv92fyqa4mzx3")}
+                      onClick={() => setVaultInput(DEMO_VAULT)}
                       className="text-[var(--gold)] hover:text-[var(--gold-soft)] text-xs font-mono border border-[var(--border)] px-2 py-0.5 rounded bg-[var(--surface-2)] transition-colors"
                     >
                       Use Demo Vault
@@ -396,7 +532,7 @@ export default function VaultPage() {
                     className="vault-input"
                     value={vaultInput}
                     onChange={(e) => setVaultInput(e.target.value)}
-                    placeholder="tb1p9kkv8c66zf8qsz9kd9nq2n3fxrytcrde8cae8qzu9ahwlfv92fyqa4mzx3"
+                    placeholder={DEMO_VAULT}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && vaultInput.trim()) void connect(vaultInput);
                     }}
@@ -409,6 +545,10 @@ export default function VaultPage() {
                     {connecting ? "Reading On-Chain VTXOs..." : "Connect Vault →"}
                   </button>
                   {connectError && <p className="text-xs font-mono text-[var(--danger)]">{connectError}</p>}
+                  <p className="text-[10px] font-mono text-[var(--text-dim)] leading-relaxed">
+                    Connecting generates an ephemeral Schnorr keypair on this device. Every transition you authorize is
+                    signed with it; the private key never leaves your browser.
+                  </p>
                 </div>
               )}
             </div>
@@ -503,38 +643,67 @@ export default function VaultPage() {
                     <strong className="text-[var(--text)]">{formatHealth(position?.minHealthBps)}</strong>
                   </div>
                   <div className="flex justify-between items-center text-xs font-mono">
-                    <span className="text-[var(--text-muted)]">Proof Freshness:</span>
+                    <span className="text-[var(--text-muted)]">Proof Expires:</span>
                     <strong className={!isFresh ? "text-[var(--danger)]" : "text-[var(--text-dim)]"}>
                       {formatDate(proof?.expiresAt)}
                     </strong>
                   </div>
+                  <div className="flex justify-between items-center text-xs font-mono">
+                    <span className="text-[var(--text-muted)]">Proof Source:</span>
+                    <strong className="text-[var(--text-dim)]">{proof?.source ?? "—"}</strong>
+                  </div>
                 </div>
+              </div>
+
+              {/* Advanced: operator-signed transaction for LIVE mode */}
+              <div className="mb-5 p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)]">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs font-mono text-[var(--text-muted)]">
+                    Advanced · Taurus-signed txHex {isLive && <strong className="text-[var(--danger)]">(required in LIVE mode)</strong>}
+                  </span>
+                </div>
+                <textarea
+                  className="vault-input min-h-[64px] resize-y"
+                  value={customTxHex}
+                  onChange={(e) => setCustomTxHex(e.target.value.replace(/[^0-9a-fA-F]/g, ""))}
+                  placeholder={
+                    isLive
+                      ? "Paste the real signed transaction hex built with the Taurus wallet-aggregator"
+                      : "Optional in fixture mode — the fixture adapter does not broadcast"
+                  }
+                  spellCheck={false}
+                />
               </div>
 
               <div className="space-y-3">
                 <button
                   onClick={handleDraw}
-                  disabled={busy || !amount || Number(amount) <= 0}
+                  disabled={busy || !session || !position || !amount || Number(amount) <= 0}
                   className="btn-primary w-full py-3.5 rounded-lg text-xs font-mono text-center font-semibold"
                 >
-                  {busy ? "Broadcasting..." : "Authorize Draw →"}
+                  {busy ? "Authorizing..." : "Authorize Draw →"}
                 </button>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={handleRepay}
-                    disabled={busy || !position?.debtUnits}
+                    disabled={busy || !session || !position?.debtUnits}
                     className="btn-ghost py-2.5 rounded-lg text-xs font-mono text-center"
                   >
                     Repay All
                   </button>
                   <button
                     onClick={handleUnlock}
-                    disabled={busy || position?.debtUnits !== 0}
+                    disabled={busy || !session || position?.debtUnits !== 0 || position?.state === "EXITED"}
                     className="btn-ghost py-2.5 rounded-lg text-xs font-mono text-center"
                   >
                     Request Unlock
                   </button>
                 </div>
+                {!session && (
+                  <p className="text-[10px] font-mono text-[var(--text-dim)] text-center">
+                    Connect a vault to enable signed transitions.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -553,7 +722,7 @@ export default function VaultPage() {
                 </div>
               ) : (
                 <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
-                  {receipts.slice(0, 5).map((r) => (
+                  {receipts.slice(0, 8).map((r) => (
                     <div
                       key={r.id}
                       className="p-3.5 bg-[#090807] rounded-lg border border-[var(--border-soft)] text-xs font-mono flex items-center justify-between"
@@ -585,6 +754,7 @@ export default function VaultPage() {
                   ? `${tachiSnapshot.node.chainId} · ${tachiSnapshot.health.advertisedValidators} validators · Quorum ${tachiSnapshot.quorum.threshold}/${tachiSnapshot.quorum.validatorCount}`
                   : "Signet RPC active (https://rpc-signet.tachibtc.com)"}
               </strong>
+              {tachiError && <span className="text-[var(--danger)] ml-2">{tachiError}</span>}
             </div>
           </div>
           <button onClick={checkTachi} disabled={tachiBusy} className="btn-ghost px-4 py-2 rounded-lg text-xs font-mono">

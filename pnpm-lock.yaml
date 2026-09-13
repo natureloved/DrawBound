@@ -11,6 +11,9 @@ importers:
       '@noble/curves':
         specifier: ^2.4.0
         version: 2.4.0
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@tachibtc/tachi-sdk-ts':
         specifier: 0.2.1
         version: 0.2.1
