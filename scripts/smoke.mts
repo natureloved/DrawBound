@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- HTTP smoke script: response shapes are dynamic and asserted at runtime */
 import { schnorr } from "@noble/curves/secp256k1.js";
 import { randomBytes } from "@noble/hashes/utils.js";
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { assertPositionInvariants } from "@/lib/domain/invariants";
 import { createReceipt, createReceiptId } from "@/lib/receipts/create";
 import { getTachiAdapter, isLiveMode } from "@/lib/tachi";
+import { deriveHealthProof } from "@/lib/proofs/derive";
 import { authenticateAction } from "@/lib/auth/action-auth";
 import { badRequest, guardRateLimit, nonceConflict, readJsonBody } from "@/app/api/_lib/http";
 import { addReceipt, getProcessedDraw, rememberProcessedDraw, savePosition, transitionFingerprint } from "@/lib/store";
@@ -76,6 +77,9 @@ export async function POST(request: Request) {
     exitStatus: debtUnits === 0 ? ("AVAILABLE" as const) : before.exitStatus,
     nonce: before.nonce + 1,
   };
+  // Refresh the stored attestation to the post-repay debt so the UI and the next
+  // gate see the real ratio immediately.
+  next.latestProof = deriveHealthProof(next);
   assertPositionInvariants(next);
   await savePosition(next);
 

@@ -138,10 +138,13 @@ export async function POST(request: Request) {
     nonce: before.nonce + 1,
   };
   assertPositionInvariants(next);
+  // Keep the attestation current with the post-draw debt so the next gate sees real health,
+  // and return the position WITH that proof so the UI never shows a stale ratio.
+  const postDrawProof = deriveHealthProof(next);
+  next.latestProof = postDrawProof;
   await savePosition(next);
-  // Keep the attestation current with the post-draw debt so the next gate sees real health.
-  await setProof(next.id, deriveHealthProof(next));
   await archiveProof(freshProof);
+  await archiveProof(postDrawProof);
 
   const receipt = createReceipt({
     id: createReceiptId(),

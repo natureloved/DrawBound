@@ -32,6 +32,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Dev-server only: allow local origins so the HMR/turbopack client (and thus
+  // hydration) works when browsing via 127.0.0.1 or a LAN address.
+  allowedDevOrigins: ["127.0.0.1", "localhost", "192.168.1.142"],
   // Emit a self-contained server bundle for slim container images.
   output: "standalone",
   async headers() {
