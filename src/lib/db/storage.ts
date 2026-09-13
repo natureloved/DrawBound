@@ -2,6 +2,32 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { CreditPosition, DecisionReceipt, LoanHealthProof } from "../domain/types";
 import { fixtureProof } from "../proofs/fixtures";
+import { env } from "../config/env";
+// Safe to import statically: sqlite.ts only loads node:sqlite lazily at first use,
+// so JSON-mode deployments never touch the sqlite module.
+import { SqliteStorageRepository } from "./sqlite";
+
+/**
+ * Storage backend contract. Two implementations ship:
+ * - `StorageRepository` (JSON file; default; single instance)
+ * - `SqliteStorageRepository` (node:sqlite; DB_BACKEND=sqlite; durable, transactional)
+ * Both are awaited before decisions are returned; see docs/deployment.md.
+ */
+export interface StorageBackend {
+  getPosition(positionId: string): Promise<CreditPosition | null>;
+  getPositionByVault(vaultRef: string): Promise<CreditPosition | null>;
+  listPositions(): Promise<CreditPosition[]>;
+  savePosition(position: CreditPosition): Promise<CreditPosition>;
+  getReceipts(positionId?: string): Promise<DecisionReceipt[]>;
+  addReceipt(receipt: DecisionReceipt): Promise<void>;
+  getProcessedDraw(fingerprint: string): Promise<DecisionReceipt | undefined>;
+  getAllProcessedDraws(): Promise<Record<string, DecisionReceipt>>;
+  rememberProcessedDraw(fingerprint: string, receipt: DecisionReceipt): Promise<void>;
+  saveProof(proof: LoanHealthProof): Promise<void>;
+  reset(): Promise<void>;
+  flush(): Promise<void>;
+  writeError(): unknown;
+}
 
 /**
  * JSON-file persistence for the single-instance deployment.
@@ -48,7 +74,7 @@ export function seedDemoPosition(): CreditPosition {
   };
 }
 
-export class StorageRepository {
+export class StorageRepository implements StorageBackend {
   private memoryState: DatabaseState;
   private loadPromise: Promise<void> | null = null;
   private writeChain: Promise<void> = Promise.resolve();
@@ -204,4 +230,11 @@ export class StorageRepository {
   }
 }
 
-export const db = new StorageRepository();
+function createBackend(): StorageBackend {
+  if (env.storageBackend() === "sqlite") {
+    return new SqliteStorageRepository();
+  }
+  return new StorageRepository();
+}
+
+export const db: StorageBackend = createBackend();

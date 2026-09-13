@@ -33,6 +33,8 @@ const envSchema = z.object({
   // When true, connecting a P2TR vault address requires a valid BIP-322
   // ownership proof (fixture-style vault refs stay exempt).
   REQUIRE_OWNERSHIP_PROOF: z.enum(BOOL_STRINGS).default("false"),
+  // Storage backend: json (default, single file) or sqlite (node:sqlite, durable).
+  DB_BACKEND: z.enum(["json", "sqlite"]).default("json"),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -122,6 +124,12 @@ export const env = {
   },
   requireOwnershipProof(): boolean {
     return readBool("REQUIRE_OWNERSHIP_PROOF", false);
+  },
+  storageBackend(): "json" | "sqlite" {
+    const raw = process.env.DB_BACKEND;
+    if (raw === undefined || raw === "") return "json";
+    if (raw !== "json" && raw !== "sqlite") invalid("DB_BACKEND", `expected "json" or "sqlite", got "${raw}"`);
+    return raw;
   },
   rateLimitMax(): number {
     return readInt("RATE_LIMIT_MAX", 60);

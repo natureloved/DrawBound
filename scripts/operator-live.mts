@@ -22,7 +22,6 @@
  * vault and building credit-transition transactions stay with the operator
  * (see `fund-help` and docs/tachi-integration.md).
  */
-/* eslint-disable no-console */
 import { Address, Signer } from "bip322-js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
