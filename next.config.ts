@@ -2,16 +2,28 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
-// Google Fonts origins are required by src/app/layout.tsx.
-const fontStyleSrc = "https://fonts.googleapis.com";
-const fontSrc = "https://fonts.gstatic.com";
+// Comma-separated list of origins that may load dev resources (HMR / Turbopack
+// client). Local defaults always apply; add LAN/remote origins via env.
+const allowedDevOrigins = Array.from(
+  new Set(
+    [
+      "localhost",
+      "127.0.0.1",
+      ...(process.env.ALLOWED_DEV_ORIGINS ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ].map((value) => value.toLowerCase()),
+  ),
+);
 
 const contentSecurityPolicy = [
   "default-src 'self'",
   // Next.js injects inline scripts and (in dev) needs eval for fast refresh.
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  `style-src 'self' 'unsafe-inline' ${fontStyleSrc}`,
-  `font-src 'self' ${fontSrc} data:`,
+  // next/font self-hosts the webfonts at build time — no external font origins required.
+  "style-src 'self' 'unsafe-inline'",
+  `font-src 'self' data:`,
   "img-src 'self' data: blob:",
   "connect-src 'self'",
   "frame-ancestors 'none'",
@@ -32,9 +44,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Dev-server only: allow local origins so the HMR/turbopack client (and thus
-  // hydration) works when browsing via 127.0.0.1 or a LAN address.
-  allowedDevOrigins: ["127.0.0.1", "localhost", "192.168.1.142"],
+  allowedDevOrigins,
   // Emit a self-contained server bundle for slim container images.
   output: "standalone",
   async headers() {

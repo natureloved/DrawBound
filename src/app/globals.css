@@ -34,7 +34,7 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter), sans-serif;
   margin: 0;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
@@ -53,13 +53,13 @@ a {
 }
 
 .font-display {
-  font-family: 'Fraunces', serif;
+  font-family: var(--font-fraunces), serif;
   font-optical-sizing: auto;
   font-variation-settings: "SOFT" 50, "WONK" 0;
 }
 
 .headline {
-  font-family: 'Fraunces', serif;
+  font-family: var(--font-fraunces), serif;
   font-weight: 300;
   letter-spacing: -0.03em;
   line-height: 0.95;
@@ -72,7 +72,7 @@ a {
 }
 
 .font-mono {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-jbmono), monospace;
 }
 
 /* Grain overlay */
@@ -155,7 +155,7 @@ body::before {
 
 /* Section label */
 .section-label {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-jbmono), monospace;
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -227,7 +227,7 @@ body::before {
 
 /* Section label */
 .section-label {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-jbmono), monospace;
   font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -307,7 +307,7 @@ body::before {
 
 .marquee-item {
   color: #050505;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-jbmono), monospace;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -332,7 +332,7 @@ body::before {
   background: #080706;
   border: 1px solid var(--border);
   border-radius: 16px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-jbmono), monospace;
   font-size: 13.5px;
   line-height: 1.85;
 }
@@ -411,7 +411,7 @@ body::before {
 
 /* Headline kerning */
 .headline {
-  font-family: 'Fraunces', serif;
+  font-family: var(--font-fraunces), serif;
   font-weight: 300;
   letter-spacing: -0.03em;
   line-height: 1;
@@ -437,7 +437,7 @@ body::before {
   border: 1px solid var(--border);
   color: var(--text);
   padding: 12px 14px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-jbmono), monospace;
   font-size: 13px;
   outline: 0;
   border-radius: 8px;
@@ -471,20 +471,20 @@ body::before {
   outline: 0;
   width: 100%;
   padding: 0 14px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-jbmono), monospace;
   font-size: 18px;
 }
 
 .amount-input span {
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-jbmono), monospace;
   font-size: 11px;
   padding-right: 14px;
 }
 
 /* Badges & Tags */
 .status-tag {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-jbmono), monospace;
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
