@@ -23,7 +23,7 @@ Verify everything:
 ```bash
 corepack pnpm typecheck    # tsc --noEmit
 corepack pnpm lint         # eslint (flat config)
-corepack pnpm test         # 92 unit + integration tests
+corepack pnpm test         # 109 unit + integration tests
 corepack pnpm build        # production build
 corepack pnpm smoke        # HTTP end-to-end run against SMOKE_BASE (default http://127.0.0.1:3107)
 ```
@@ -56,10 +56,15 @@ Sessions then carry `ownershipVerified: true`. With `REQUIRE_OWNERSHIP_PROOF=tru
 
 ```bash
 pnpm exec tsx scripts/operator-live.mts derive                 # vault P2TR + ownership address from your key (live signet quorum)
+pnpm exec tsx scripts/operator-live.mts export-key             # mnemonic -> OPERATOR_PRIVATE_KEY (hex + WIF) for the step below
 pnpm exec tsx scripts/operator-live.mts ownership <vaultRef>   # challenge -> signed connect body
 pnpm exec tsx scripts/operator-live.mts status <vaultRef>      # locked-VTXO read
 pnpm exec tsx scripts/operator-live.mts fund-help              # funding + live-write procedure
 ```
+
+`derive` takes a mnemonic but `ownership` needs a 32-byte hex key, and the wallet
+aggregator never exposes private keys — `export-key` is the bridge. Confirm its
+`ownershipAddress` matches the one `derive` printed before connecting.
 
 Reference oracle for strict proof mode (holds the signing key; DrawBound only ever sees the public key):
 

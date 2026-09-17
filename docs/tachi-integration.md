@@ -39,10 +39,11 @@ Drawbound distinguishes three transaction classes:
 
 ## Live write path (operator responsibilities)
 
-`LiveTachiAdapter` performs no key handling and creates no vault. The operator workflow is scripted in `scripts/operator-live.mts` (`derive` / `ownership` / `status` / `fund-help`); the full procedure:
+`LiveTachiAdapter` performs no key handling and creates no vault. The operator workflow is scripted in `scripts/operator-live.mts` (`derive` / `export-key` / `ownership` / `status` / `fund-help`); the full procedure:
 
 1. Run on `signet` or `regtest` with `LIVE_TACHI_ENABLED=true` and `KILL_SWITCH=false`.
 2. Derive the vault: `OPERATOR_MNEMONIC=... pnpm exec tsx scripts/operator-live.mts derive` (uses the live validator quorum; prints the vault P2TR and the BIP-322 ownership address for the same key). List the vault P2TR in `TACHI_VAULT_REF` and `ALLOWED_VAULT_REFS`.
+   - To *connect* the vault you need a BIP-322 ownership proof, which requires the 32-byte key as `OPERATOR_PRIVATE_KEY`. The aggregator never exposes private keys and `derive` will not print one, so export it explicitly: `OPERATOR_MNEMONIC=... pnpm exec tsx scripts/operator-live.mts export-key`. It must report the same `ownershipAddress` that `derive` printed.
 3. Fund it: a signet faucet, or `depositToVault({vault, userWallet, rpcClient})` from a funded P2WPKH aggregator wallet (SegWit funding is protocol-required). Verify with `status`.
 4. Build and sign the SatVM credit-transition transaction offline with `@tachibtc/taurus-wallet-aggregator` / `buildTachiTxTransfer` + `signTachiTx` + `encodeTachiTxBase64`, producing the encoded transaction.
 5. Submit it on the draw/repay/unlock request body (Advanced box in the terminal). Drawbound broadcasts it and records the returned hash; without it the transition fails closed (DENY receipt). Synthetic demo payloads (`dbdemo01` prefix) and non-transaction hex are rejected outright.
