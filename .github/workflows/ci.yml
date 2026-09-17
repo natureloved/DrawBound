@@ -14,15 +14,22 @@ jobs:
       LIVE_TACHI_ENABLED: "false"
       PROOF_MODE: fixture
       KILL_SWITCH: "true"
-      DATA_DIR: ${{ runner.temp }}/drawbound-data
+      # Do NOT reference runner.temp here. The `runner` context is not available
+      # in a job-level `env` block, and referencing it makes GitHub reject the
+      # entire workflow with "Unrecognized named-value: 'runner'". That surfaces
+      # as a startup failure with ZERO jobs, so nothing runs and no test output
+      # appears — it looks like CI is broken rather than misconfigured.
+      # /tmp is writable and ephemeral on ubuntu-latest, which is all we need.
+      DATA_DIR: /tmp/drawbound-data
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 11
+        # Intentionally no `version` input: package.json pins the exact pnpm via
+        # its `packageManager` field. Passing both makes the action fail with
+        # "Multiple versions of pnpm specified" and abort the job.
 
       - name: Setup Node
         uses: actions/setup-node@v4
