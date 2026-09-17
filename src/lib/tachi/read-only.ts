@@ -12,6 +12,7 @@ import {
 } from "@tachibtc/tachi-sdk-ts";
 import { tachiBaseUrl } from "./http-client";
 import { createTachiSdkClient } from "./sdk-client";
+import { env } from "../config/env";
 
 export type TachiReadNetwork = "signet" | "regtest";
 
@@ -50,7 +51,7 @@ export interface TachiReadOnlySnapshot {
   policy: {
     mode: string;
     liveReadsEnabled: true;
-    liveWritesEnabled: false;
+    liveWritesEnabled: boolean;
     killSwitch: boolean;
     mainnetAllowed: boolean;
   };
@@ -131,11 +132,17 @@ export async function readTachiSnapshot(options: {
       ? { vault: lockedSummary(options.vaultAddress, locked) }
       : {}),
     policy: {
-      mode: process.env.APP_MODE || "fixture",
+      // Read through the validated env module so these flags always agree with
+      // the gates in ../security/policy.ts. This block previously reimplemented
+      // the parsing: it hardcoded `liveWritesEnabled: false` (so an armed
+      // deployment reported disarmed), dropped the LIVE_TACHI_ENABLED + kill
+      // switch conjunction from `mainnetAllowed`, and surfaced the raw
+      // `APP_MODE` string unvalidated.
+      mode: env.liveEnabled() ? "live" : "fixture",
       liveReadsEnabled: true,
-      liveWritesEnabled: false,
-      killSwitch: process.env.KILL_SWITCH !== "false",
-      mainnetAllowed: process.env.ALLOW_MAINNET === "true",
+      liveWritesEnabled: env.liveEnabled() && !env.killSwitch(),
+      killSwitch: env.killSwitch(),
+      mainnetAllowed: env.mainnetAllowed(),
     },
   };
 }

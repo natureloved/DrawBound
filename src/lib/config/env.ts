@@ -15,9 +15,22 @@ import { z } from "zod";
 
 const BOOL_STRINGS = ["true", "false"] as const;
 
+/**
+ * Mode values are restricted to what actually has a code path. `NATIVE`, `RELAY`
+ * and `RECORDED` are documented as reserved boundaries with no implementation, so
+ * naming one here fails fast at boot instead of silently behaving as `fixture`.
+ * An empty value means "unset" and falls back to the default, matching the
+ * `z.literal("")` convention used for the URL fields below.
+ */
+const modeSchema = (fallback: "fixture" | "live") =>
+  z
+    .union([z.literal(""), z.enum(["fixture", "live"])])
+    .default(fallback)
+    .transform((value) => (value === "" ? fallback : value));
+
 const envSchema = z.object({
-  APP_MODE: z.string().default("fixture"),
-  PROOF_MODE: z.string().default("fixture"),
+  APP_MODE: modeSchema("fixture"),
+  PROOF_MODE: modeSchema("fixture"),
   TACHI_NETWORK: z.enum(["signet", "regtest", "mainnet"]).default("signet"),
   TACHI_BASE_URL: z.union([z.url(), z.literal("")]).default(""),
   TACHI_RPC_URL: z.union([z.url(), z.literal("")]).default(""),

@@ -9,12 +9,21 @@ corepack pnpm install
 corepack pnpm dev          # http://localhost:3000 — fixture mode on signet
 ```
 
+The app is two pages:
+
+| Route | What it is |
+|---|---|
+| `/` | Landing page — what the protocol claims, with links into the terminal |
+| `/vault` | **Vault Terminal** — the actual self-custodial session flow (connect, draw, repay, unlock) |
+
+Every flow described below happens in `/vault`.
+
 Verify everything:
 
 ```bash
 corepack pnpm typecheck    # tsc --noEmit
 corepack pnpm lint         # eslint (flat config)
-corepack pnpm test         # 62 unit + integration tests
+corepack pnpm test         # 92 unit + integration tests
 corepack pnpm build        # production build
 corepack pnpm smoke        # HTTP end-to-end run against SMOKE_BASE (default http://127.0.0.1:3107)
 ```
