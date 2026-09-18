@@ -64,7 +64,7 @@ Before any live write, record here: the exact official source URL, package/versi
 
 | Field | Value |
 |---|---|
-| Live write executed | **none yet** |
-| Daemon | `https://rpc-signet.tachibtc.com` (reads verified 2026-09-07: health ok, 7/7 validators, quorum 5/7) |
+| Live write executed | **none yet** (operator-gated; fail-closed safety policy enforced) |
+| Daemon | `https://rpc-signet.tachibtc.com` (reads verified 2026-09-18: health ok, block 322642, 7/7 validators, quorum 5/7) |
 | Broadcast method | `POST /tachi_txBroadcastSync` via `TachiHttpClient.broadcastTxSync` |
 | Vault read method | `GET /tachi_vtxoLocked?vault=<p2tr>` via `getLockedVtxos` |
