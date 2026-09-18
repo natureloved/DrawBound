@@ -241,21 +241,21 @@ export default function Home() {
       <div
         className="ambient-glow"
         style={{
-          width: "600px",
-          height: "600px",
-          background: "rgba(232, 160, 78, 0.08)",
-          top: "-200px",
+          width: "750px",
+          height: "750px",
+          background: "radial-gradient(circle, rgba(232, 160, 78, 0.22) 0%, rgba(244, 201, 138, 0.08) 40%, transparent 70%)",
+          top: "-250px",
           left: "-200px",
         }}
       />
       <div
         className="ambient-glow"
         style={{
-          width: "500px",
-          height: "500px",
-          background: "rgba(95, 184, 120, 0.05)",
-          top: "400px",
-          right: "-150px",
+          width: "650px",
+          height: "650px",
+          background: "radial-gradient(circle, rgba(95, 184, 120, 0.18) 0%, rgba(107, 158, 255, 0.07) 45%, transparent 70%)",
+          top: "350px",
+          right: "-180px",
         }}
       />
 
@@ -309,9 +309,9 @@ export default function Home() {
               </svg>
               GitHub
             </a>
-            <Link href="/vault" className="btn-primary inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold">
-              Read the spec
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <Link href="/vault" className="btn-primary btn-sm">
+              <span>Read the spec</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M13 5l7 7-7 7" />
               </svg>
             </Link>
@@ -330,21 +330,24 @@ export default function Home() {
         </div>
 
         {mobileMenuOpen && (
-          <div className="mobile-menu open md:hidden absolute top-16 left-0 right-0 bg-[var(--bg-2)] border-b border-[var(--border)] px-6 py-6 flex flex-col gap-4 text-[var(--text-muted)]">
-            <a href="#thesis" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)]">
+          <div className="mobile-menu open md:hidden absolute top-16 left-0 right-0 bg-[#09080c]/95 backdrop-blur-xl border-b border-[var(--border)] px-6 py-6 flex flex-col gap-4 text-[var(--text-muted)] shadow-2xl z-50">
+            <a href="#thesis" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-1">
               Thesis
             </a>
-            <a href="#how" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)]">
+            <a href="#how" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-1">
               Mechanism
             </a>
-            <a href="#proof" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)]">
+            <a href="#proof" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-1">
               Proof
             </a>
-            <a href="#architecture" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)]">
+            <a href="#architecture" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-1">
               Architecture
             </a>
-            <Link href="/vault" onClick={() => setMobileMenuOpen(false)} className="text-[var(--gold)]">
-              Launch App →
+            <Link href="/vault" onClick={() => setMobileMenuOpen(false)} className="btn-primary btn-sm w-full mt-2">
+              <span>Launch Vault Terminal</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M13 5l7 7-7 7" />
+              </svg>
             </Link>
           </div>
         )}
@@ -363,7 +366,7 @@ export default function Home() {
 
               <h1
                 className="headline mb-7"
-                style={{ fontSize: "clamp(calc(2.6rem + 4px), calc(6.5vw + 4px), calc(5.2rem + 4px))" }}
+                style={{ fontSize: "clamp(2.1rem, 7vw, 5.2rem)" }}
               >
                 Credit that <em>cannot</em>
                 <br />
@@ -376,30 +379,27 @@ export default function Home() {
               </p>
 
               <div className="flex flex-wrap items-center gap-3 mb-6">
-                <Link href="/vault" className="btn-primary inline-flex items-center gap-2.5 px-6 py-3 rounded-lg text-base font-bold">
+                <Link href="/vault" className="btn-primary btn-lg">
+                  <span>Connect Vault &amp; Explore</span>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M13 5l7 7-7 7" />
                   </svg>
-                  Connect Vault &amp; Explore
                 </Link>
               </div>
 
               {/* Stats in a single horizontal line with dot dividers */}
               <div className="pt-4 border-t border-[var(--border-soft)]" style={{ marginTop: "20px" }}>
-                <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-2 text-xs sm:text-sm font-mono text-[var(--text-muted)]">
-                  <span className="flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="font-semibold text-sm sm:text-base text-[var(--gold)]">100%</span>
-                    <span>Native BTC</span>
+                <div className="flex flex-wrap items-center gap-y-2 text-xs sm:text-sm font-mono text-[var(--text-muted)]">
+                  <span className="whitespace-nowrap">
+                    <strong className="font-semibold text-sm sm:text-base text-[var(--gold)]">100%</strong> Native BTC
                   </span>
-                  <span className="text-[var(--border)] text-sm select-none">•</span>
-                  <span className="flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="font-semibold text-sm sm:text-base text-[var(--proof)]">0</span>
-                    <span>Custodians</span>
+                  <span className="text-[var(--border)] select-none px-4 sm:px-6">•</span>
+                  <span className="whitespace-nowrap">
+                    <strong className="font-semibold text-sm sm:text-base text-[var(--proof)]">0</strong> Custodians
                   </span>
-                  <span className="text-[var(--border)] text-sm select-none">•</span>
-                  <span className="flex items-center gap-1.5 whitespace-nowrap">
-                    <span className="font-semibold text-sm sm:text-base text-[var(--text)]">∞</span>
-                    <span>Proof-bounded</span>
+                  <span className="text-[var(--border)] select-none px-4 sm:px-6">•</span>
+                  <span className="whitespace-nowrap">
+                    <strong className="font-semibold text-sm sm:text-base text-[var(--text)]">∞</strong> Proof-bounded
                   </span>
                 </div>
               </div>
@@ -448,20 +448,20 @@ export default function Home() {
       </section>
 
       {/* Marquee */}
-      <section className="border-y border-[var(--border-soft)] py-5 overflow-hidden bg-[var(--bg-2)]">
-        <div className="marquee text-[var(--text-dim)] font-mono text-sm uppercase tracking-widest">
-          <span className="flex items-center gap-3">No wrappers <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No bridges <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No custodial risk <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">Proof-bounded issuance <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">L1-anchored settlement <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">Non-rehypothecatable <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No wrappers <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No bridges <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No custodial risk <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">Proof-bounded issuance <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">L1-anchored settlement <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">Non-rehypothecatable <span className="text-[var(--gold)]">/</span></span>
+      <section className="marquee-box">
+        <div className="marquee">
+          <span className="marquee-item">No wrappers <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">No bridges <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">No custodial risk <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">Proof-bounded issuance <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">L1-anchored settlement <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">Non-rehypothecatable <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">No wrappers <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">No bridges <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">No custodial risk <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">Proof-bounded issuance <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">L1-anchored settlement <span className="marquee-sep">/</span></span>
+          <span className="marquee-item">Non-rehypothecatable <span className="marquee-sep">/</span></span>
         </div>
       </section>
 
@@ -652,7 +652,7 @@ export default function Home() {
                 <p>This is the difference between a speed limit sign and a governor on the engine.</p>
               </div>
 
-              <div className="reveal grid grid-cols-2 gap-4">
+              <div className="reveal grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="card p-5">
                   <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)] mb-2">Traditional</div>
                   <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] mb-1">
@@ -997,9 +997,9 @@ export default function Home() {
         <div
           className="ambient-glow"
           style={{
-            width: "700px",
-            height: "700px",
-            background: "rgba(232, 160, 78, 0.06)",
+            width: "800px",
+            height: "800px",
+            background: "radial-gradient(circle, rgba(232, 160, 78, 0.20) 0%, rgba(244, 201, 138, 0.06) 45%, transparent 70%)",
             top: "50%",
             left: "50%",
             transform: "translate(-50%, -50%)",
@@ -1018,27 +1018,16 @@ export default function Home() {
             DrawBound is open-source and in active development. Read the spec, audit the mechanism, or launch the live terminal.
           </p>
 
-          <div className="reveal flex flex-wrap items-center justify-center gap-4">
+          <div className="reveal flex items-center justify-center pt-2">
             <Link
               href="/vault"
-              className="btn-primary inline-flex items-center gap-2.5 px-7 py-3.5 rounded-lg text-sm font-semibold"
+              className="btn-primary btn-lg"
             >
-              Launch Vault Terminal
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <span>Launch Vault Terminal</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M13 5l7 7-7 7" />
               </svg>
             </Link>
-            <a
-              href="https://github.com/natureloved/DrawBound"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-ghost inline-flex items-center gap-2.5 px-7 py-3.5 rounded-lg text-sm font-medium"
-            >
-              Explore the repository
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7 17L17 7M7 7h10v10" />
-              </svg>
-            </a>
           </div>
         </div>
       </section>

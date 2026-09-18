@@ -396,21 +396,21 @@ export default function VaultPage() {
       <div
         className="ambient-glow"
         style={{
-          width: "600px",
-          height: "600px",
-          background: "rgba(232, 160, 78, 0.07)",
-          top: "-200px",
+          width: "750px",
+          height: "750px",
+          background: "radial-gradient(circle, rgba(232, 160, 78, 0.22) 0%, rgba(244, 201, 138, 0.08) 40%, transparent 70%)",
+          top: "-250px",
           left: "-200px",
         }}
       />
       <div
         className="ambient-glow"
         style={{
-          width: "500px",
-          height: "500px",
-          background: "rgba(95, 184, 120, 0.05)",
+          width: "650px",
+          height: "650px",
+          background: "radial-gradient(circle, rgba(95, 184, 120, 0.18) 0%, rgba(107, 158, 255, 0.07) 45%, transparent 70%)",
           top: "300px",
-          right: "-150px",
+          right: "-180px",
         }}
       />
 
