@@ -32,8 +32,30 @@ interface StoredSession {
   vaultRef: string;
   positionId: string;
   sessionToken: string;
-  privateKey: string;
   publicKey: string;
+}
+
+/**
+ * The ephemeral signing key is kept ONLY in memory (this module's scope).
+ *
+ * It used to be persisted to localStorage alongside the bearer session token,
+ * which meant any XSS on the page could exfiltrate both and sign transitions on
+ * the user's behalf. A page reload now mints a new keypair and reconnects; that
+ * is the intended self-custodial trade (the server's session dies anyway on a
+ * restart, since sessions are in process memory).
+ */
+let inMemoryPrivateKey: string | null = null;
+
+export function rememberSessionKey(privateKey: string): void {
+  inMemoryPrivateKey = privateKey;
+}
+
+export function currentSessionKey(): string | null {
+  return inMemoryPrivateKey;
+}
+
+export function forgetSessionKey(): void {
+  inMemoryPrivateKey = null;
 }
 
 const SESSION_KEY = "drawbound:session";
@@ -189,6 +211,7 @@ export default function VaultPage() {
           });
           if (response.status === 401) {
             window.localStorage.removeItem(SESSION_KEY);
+            forgetSessionKey();
             setSession(null);
           }
           return data;
@@ -241,11 +264,13 @@ export default function VaultPage() {
           vaultRef,
           positionId: String((data as { position?: CreditPosition }).position?.id ?? ""),
           sessionToken: String((data as { sessionToken?: string }).sessionToken ?? ""),
-          privateKey: keypair.privateKey,
           publicKey: keypair.publicKey,
         };
         if (!stored.sessionToken) throw new Error("Server did not return a session token");
+        // Only the non-secret session handle is persisted; the private key stays
+        // in memory (see rememberSessionKey).
         window.localStorage.setItem(SESSION_KEY, JSON.stringify(stored));
+        rememberSessionKey(keypair.privateKey);
         setSession(stored);
         setOwnershipVerified(Boolean((data as { ownershipVerified?: boolean }).ownershipVerified));
         setOwnershipChallenge(null);
@@ -293,6 +318,7 @@ export default function VaultPage() {
       // best effort revocation; local state is cleared regardless
     }
     window.localStorage.removeItem(SESSION_KEY);
+    forgetSessionKey();
     setSession(null);
     setOwnershipVerified(false);
     setPosition(null);
@@ -341,7 +367,15 @@ export default function VaultPage() {
         return;
       }
       const nonce = position.nonce;
-      const signature = signTransitionRequest(session.privateKey, {
+      const privateKey = currentSessionKey();
+      if (!privateKey) {
+        setNotice({
+          tone: "deny",
+          text: "The session signing key is not available (it lives in memory and a reload clears it). Reconnect your vault.",
+        });
+        return;
+      }
+      const signature = signTransitionRequest(privateKey, {
         positionId: position.id,
         vaultRef: position.vaultRef,
         action,
@@ -462,7 +496,7 @@ export default function VaultPage() {
           <div>
             <div className="section-label mb-3">
               <span className="pulse-dot" />
-              Live Self-Custodial Vault Terminal
+              {adapterMode === "live" ? "Live Signet Vault Terminal" : "Fixture Rehearsal Terminal"}
             </div>
             <h1 className="headline text-[clamp(2.2rem,4vw,3.4rem)]">
               Taurus Credit <em>Terminal</em>
@@ -579,7 +613,7 @@ export default function VaultPage() {
                     disabled={connecting || !vaultInput.trim()}
                     className="btn-primary w-full py-3 rounded-lg text-xs font-mono"
                   >
-                    {connecting ? "Reading On-Chain VTXOs..." : "Connect Vault →"}
+                    {connecting ? (adapterMode === "live" ? "Reading On-Chain VTXOs..." : "Connecting...") : "Connect Vault →"}
                   </button>
                   {connectError && <p className="text-xs font-mono text-[var(--danger)]">{connectError}</p>}
                   <p className="text-[10px] font-mono text-[var(--text-dim)] leading-relaxed">

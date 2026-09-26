@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { readTachiSnapshot } from "@/lib/tachi/read-only";
 import { connectVault, getPosition, positionIdForVault } from "@/lib/store";
 import { fetchLiveLoanHealthProof } from "@/lib/proofs/oracle-client";
+import { verifyNormalizedProof } from "@/lib/proofs/verify";
 import { isLiveMode } from "@/lib/tachi";
 import { createSession } from "@/lib/auth/sessions";
 import { consumeOwnershipChallenge, isP2trAddress, verifyOwnershipSignature } from "@/lib/auth/ownership";
-import { badRequest, forbidden, guardRateLimit, readJsonBody } from "@/app/api/_lib/http";
+import { badRequest, forbidden, guardRateLimit, hasAdminToken, readJsonBody } from "@/app/api/_lib/http";
 import { isHex } from "@/lib/wallet/canonical";
 import { env } from "@/lib/config/env";
 
@@ -100,6 +101,28 @@ export async function POST(request: Request) {
     debtUnits: existing?.debtUnits ?? 0,
     collateralSats: modeledCollateral,
   });
+
+  // Proof integrity is enforced HERE, at the boundary — the README/deployment
+  // docs promise strict mode gates connect as well as every draw, so a proof
+  // that fails verification (including a forged/allowlist-violating oracle
+  // signature) must never open a session. Fails closed.
+  const strictProofs = env.proofRelayPublicKeys().length > 0;
+  if (!verifyNormalizedProof(liveProof)) {
+    const reason = strictProofs
+      ? "Loan-health proof failed signature verification against PROOF_RELAY_PUBLIC_KEYS"
+      : "Loan-health proof failed verification";
+    return badRequest(reason);
+  }
+
+  // Restoring an existing position grants control over its outstanding debt and
+  // receipts, so it must be proven, not assumed. A caller may restore a position
+  // only with a valid ownership proof for that vault (or when a valid admin
+  // token is presented for operator recovery). Brand-new positions stay open.
+  if (existing && !ownershipVerified && !hasAdminToken(request)) {
+    return forbidden(
+      "This vault already has a position on record; connecting to it requires a valid BIP-322 ownership proof or an admin token",
+    );
+  }
 
   const position = await connectVault(vaultRef, lockedSats ?? 0, liveProof);
   const session = createSession({

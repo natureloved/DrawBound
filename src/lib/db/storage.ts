@@ -20,6 +20,15 @@ export interface StorageBackend {
   savePosition(position: CreditPosition): Promise<CreditPosition>;
   getReceipts(positionId?: string): Promise<DecisionReceipt[]>;
   addReceipt(receipt: DecisionReceipt): Promise<void>;
+  /**
+   * Persist a position update and its receipt as one atomic step.
+   *
+   * Required, not optional: `savePosition` then `addReceipt` are two separate
+   * awaits, so a crash (or a rejection between them) can leave the state and the
+   * audit trail disagreeing — a receipt claiming a decision the position never
+   * recorded, or a position that advanced with no receipt explaining it.
+   */
+  commitTransition(position: CreditPosition, receipt: DecisionReceipt): Promise<void>;
   getProcessedDraw(fingerprint: string): Promise<DecisionReceipt | undefined>;
   getAllProcessedDraws(): Promise<Record<string, DecisionReceipt>>;
   rememberProcessedDraw(fingerprint: string, receipt: DecisionReceipt): Promise<void>;
@@ -187,6 +196,20 @@ export class StorageRepository implements StorageBackend {
 
   async addReceipt(receipt: DecisionReceipt): Promise<void> {
     await this.ensureLoaded();
+    this.memoryState.receipts.push(structuredClone(receipt));
+    await this.persist();
+  }
+
+  /**
+   * Position + receipt in one persisted step.
+   *
+   * Both mutations are applied to the in-memory state BEFORE the single atomic
+   * file write, so the file never shows one without the other. A crash lands on
+   * the previous consistent file (tmp + rename never tears).
+   */
+  async commitTransition(position: CreditPosition, receipt: DecisionReceipt): Promise<void> {
+    await this.ensureLoaded();
+    this.memoryState.positions[position.id] = structuredClone(position);
     this.memoryState.receipts.push(structuredClone(receipt));
     await this.persist();
   }

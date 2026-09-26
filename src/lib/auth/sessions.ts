@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/config/env";
 import { isHex } from "@/lib/wallet/canonical";
 
@@ -36,6 +36,26 @@ export interface Session {
 
 const sessions = new Map<string, Session>();
 
+// Expired entries are only dropped lazily today (on the next presentation of the
+// same token), so an attacker who creates many sessions and never reuses them
+// could grow the map without bound. A periodic sweep caps that.
+const MAX_SESSIONS = 10_000;
+let lastSweepAt = Date.now();
+const SWEEP_INTERVAL_MS = 60_000;
+
+function sweepExpiredSessions(now = Date.now()): void {
+  if (now - lastSweepAt < SWEEP_INTERVAL_MS) return;
+  lastSweepAt = now;
+  for (const [token, session] of sessions) {
+    if (session.expiresAt <= now) sessions.delete(token);
+  }
+  // Hard cap: a session flood must not exhaust memory.
+  if (sessions.size > MAX_SESSIONS) {
+    const ordered = [...sessions.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+    for (const [token] of ordered.slice(0, sessions.size - MAX_SESSIONS)) sessions.delete(token);
+  }
+}
+
 export function createSession(input: {
   vaultRef: string;
   positionId: string;
@@ -59,6 +79,7 @@ export function createSession(input: {
     ...(input.ownershipVerified && input.ownershipAddress ? { ownershipAddress: input.ownershipAddress } : {}),
   };
   sessions.set(session.token, session);
+  sweepExpiredSessions(now);
   return session;
 }
 
@@ -90,18 +111,28 @@ export function clearSessions(): void {
 
 export const SESSION_HEADER = "x-drawbound-session";
 
-/** Extract the session token from a request (header first, then JSON body field). */
-export function sessionTokenFromRequest(request: Request, body?: { sessionToken?: unknown }): string | undefined {
-  const header = request.headers.get(SESSION_HEADER);
-  if (header) return header;
-  if (body && typeof body.sessionToken === "string") return body.sessionToken;
-  return undefined;
+/**
+ * Extract the session token from a request.
+ *
+ * HEADER ONLY. The body field is deliberately not accepted: a body-borne bearer
+ * token is exactly the shape a cross-site form/fetch can auto-submit, so it
+ * turns any authenticated route into a CSRF target. Browsers do not send custom
+ * headers cross-origin without an explicit CORS preflight, so the header form is
+ * a structural CSRF defense.
+ */
+export function sessionTokenFromRequest(request: Request, _body?: { sessionToken?: unknown }): string | undefined {
+  return request.headers.get(SESSION_HEADER) ?? undefined;
 }
 
-/** Constant-time token comparison helper for admin token checks. */
+/**
+ * Constant-time token comparison helper for admin token checks.
+ *
+ * A length mismatch must not short-circuit: leaking the token's length through
+ * timing helps an attacker narrow a brute-force search. Both sides are hashed to
+ * a fixed width first, so the compare itself always runs over equal lengths.
+ */
 export function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
+  const bufA = createHash("sha256").update(a, "utf8").digest();
+  const bufB = createHash("sha256").update(b, "utf8").digest();
   return timingSafeEqual(bufA, bufB);
 }

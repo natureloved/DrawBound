@@ -24,6 +24,13 @@ export interface OracleProofRequest {
 }
 
 /**
+ * Upper bound on a health ratio. Derived health is documented as capped at 650%,
+ * so an oracle asserting a value above this is malformed (or manipulating the
+ * gate) rather than merely optimistic.
+ */
+const MAX_HEALTH_BPS = 65_000;
+
+/**
  * Fetches the freshest loan-health attestation available, in strict preference order:
  *
  * 1. EXTERNAL ORACLE (source: "oracle") — when HAT_ORACLE_URL is configured, the
@@ -64,6 +71,21 @@ export async function fetchLiveLoanHealthProof(
         // A remote attestation that does not claim VERIFIED (or fails strict
         // signature checks downstream) must not silently degrade to a derived
         // proof with a better tag: surface it and let the gate decide.
+        //
+        // The response is also bound to what was ASKED: an oracle answering for a
+        // different vault, position or network is confused or malicious, and
+        // healthBps is bounded so one cannot simply assert perfect health.
+        if (
+          proof.positionId !== request.positionId ||
+          proof.collateralRef !== request.vaultRef ||
+          proof.network !== network ||
+          !Number.isFinite(proof.healthBps) ||
+          proof.healthBps < 0 ||
+          proof.healthBps > MAX_HEALTH_BPS ||
+          Number.isNaN(new Date(proof.expiresAt).getTime())
+        ) {
+          throw new Error("Oracle attestation is not bound to the requested position/network, or is out of range");
+        }
         return proof;
       }
       console.warn(`[oracle] Remote oracle returned ${response.status}; falling back to Tachi node reading`);

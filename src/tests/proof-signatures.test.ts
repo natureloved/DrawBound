@@ -47,11 +47,31 @@ describe("signed loan-health proofs", () => {
   it("accepts a valid signature and rejects a forged one (non-strict)", () => {
     const oracle = makeOracle();
     const proof = signedProof(oracle);
+    // In non-strict mode the envelope/digest are checked and a well-formed
+    // signature must verify against its own attached key.
     expect(verifyNormalizedProof(proof)).toBe(true);
-    expect(verifyProofSignature(proof)).toBe(true);
+    // But the oracle's IDENTITY is NOT trusted without an allowlist: a signature
+    // from an arbitrary key proves only that somebody signed, not who.
+    expect(verifyProofSignature(proof)).toBe(false);
 
     const forged = { ...proof, signature: toHex(schnorr.sign(hexToBytes(proof.digest), makeOracle().priv)) };
     expect(verifyNormalizedProof(forged)).toBe(false);
+    expect(verifyProofSignature(forged)).toBe(false);
+  });
+
+  it("trusts an oracle identity only when its key is allowlisted", () => {
+    const oracle = makeOracle();
+    const impostor = makeOracle();
+    const proof = signedProof(oracle);
+    process.env.PROOF_RELAY_PUBLIC_KEYS = oracle.pub;
+    try {
+      expect(verifyProofSignature(proof)).toBe(true);
+      // The impostor's signature is well-formed but from a non-allowlisted key.
+      expect(verifyProofSignature(signedProof(impostor))).toBe(false);
+      expect(verifyNormalizedProof(signedProof(impostor))).toBe(false);
+    } finally {
+      delete process.env.PROOF_RELAY_PUBLIC_KEYS;
+    }
   });
 
   it("rejects a tampered envelope even with the original signature", () => {

@@ -18,6 +18,10 @@ import type { LoanHealthProof } from "../domain/types";
  *    is REQUIRED. Unsigned self-derived attestations are then rejected, which
  *    removes the server's ability to self-attest health.
  *
+ * Note on (2): a well-formed signature from an UNKNOWN key only proves the
+ * attestation was signed by *somebody* — use verifyProofSignature when the
+ * oracle's identity must be allowlisted too.
+ *
  * Without strict mode, unsigned "derived"/"fixture" proofs remain acceptable —
  * that is the documented testnet/demo trust model (see docs/threat-model.md):
  * the health ratio is computed by this server from its own live vault reads.
@@ -32,12 +36,20 @@ function verifyDigestSignature(proof: LoanHealthProof): boolean {
   }
 }
 
-/** True when the proof carries a valid oracle signature from the configured allowlist. */
+/**
+ * True when the proof carries a valid oracle signature from an ALLOWLISTED key.
+ *
+ * With PROOF_RELAY_PUBLIC_KEYS unset this returns false rather than true for any
+ * key: a signature from an arbitrary x-only pubkey previously passed
+ * verification, so a forged oracle attestation from a key nobody vetted was
+ * accepted as VERIFIED. An oracle is now trusted only when it is explicitly
+ * allowlisted (strict mode).
+ */
 export function verifyProofSignature(proof: LoanHealthProof): boolean {
   if (!proof.signature || !proof.oraclePubkey) return false;
   if (!verifyDigestSignature(proof)) return false;
   const allowed = env.proofRelayPublicKeys();
-  return allowed.length === 0 || allowed.includes(proof.oraclePubkey.toLowerCase());
+  return allowed.length > 0 && allowed.includes((proof.oraclePubkey ?? "").toLowerCase());
 }
 
 export function verifyNormalizedProof(proof: LoanHealthProof): boolean {

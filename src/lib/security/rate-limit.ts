@@ -16,6 +16,17 @@ export interface RateLimitResult {
   retryAfterSec: number;
 }
 
+/**
+ * Drop keys whose bucket is entirely outside the current window. Runs on EVERY
+ * call, not only when a request is rejected, so a flood of distinct
+ * under-the-limit identities cannot grow the map without bound.
+ */
+function sweepExpired(windowStart: number): void {
+  for (const [key, hits] of buckets) {
+    if (hits.every((t) => t <= windowStart)) buckets.delete(key);
+  }
+}
+
 export function rateLimit(
   key: string,
   options: { max?: number; windowMs?: number; now?: number } = {},
@@ -25,27 +36,45 @@ export function rateLimit(
   const now = options.now ?? Date.now();
   const windowStart = now - windowMs;
 
-  const hits = (buckets.get(key) ?? []).filter((t) => t > windowStart);
-  if (hits.length >= max) {
-    // Bucket map must never grow without bound under hostile traffic.
-    if (buckets.size > MAX_TRACKED_KEYS) {
-      for (const [k, v] of buckets) {
-        if (v.length === 0 || v.every((t) => t <= windowStart)) buckets.delete(k);
-      }
-    }
-    const oldest = hits[0] ?? now;
+  const filtered = (buckets.get(key) ?? []).filter((t) => t > windowStart);
+
+  if (buckets.size > MAX_TRACKED_KEYS) sweepExpired(windowStart);
+
+  if (filtered.length >= max) {
+    // Bucket map must never grow without bound under hostile traffic either.
+    if (buckets.size > MAX_TRACKED_KEYS) sweepExpired(windowStart);
+    const oldest = filtered[0] ?? now;
     return { allowed: false, retryAfterSec: Math.max(1, Math.ceil((oldest + windowMs - now) / 1000)) };
   }
-  hits.push(now);
-  buckets.set(key, hits);
+
+  filtered.push(now);
+  buckets.set(key, filtered);
   return { allowed: true, retryAfterSec: 0 };
 }
 
-/** Best-effort client identity for rate limiting (never used for auth). */
+/**
+ * Best-effort client identity for rate limiting (never used for auth).
+ *
+ * `x-forwarded-for` / `x-real-ip` are client-supplied unless a proxy you control
+ * overwrites them, so they are honored ONLY when TRUSTED_PROXY_HOPS is set to the
+ * number of proxy hops in front of this app. Without that, the key falls back to
+ * a single shared bucket — rate limiting degrades, but cannot be defeated by
+ * rotating a header, which is the failure mode that matters: an attacker who can
+ * pick their own bucket key has no rate limit at all.
+ */
 export function clientIp(request: Request): string {
+  const hops = env.trustedProxyHops();
+  if (hops <= 0) return "client";
+
   const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip") ?? "local";
+  if (forwarded) {
+    const chain = forwarded.split(",").map((entry) => entry.trim()).filter(Boolean);
+    // The left-most untrusted entry is the client; the trusted proxy depth
+    // strips the hops appended by infrastructure we control.
+    const index = Math.max(0, chain.length - hops);
+    return chain[index]!;
+  }
+  return request.headers.get("x-real-ip") ?? "client";
 }
 
 /** Test helper. */

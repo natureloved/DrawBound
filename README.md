@@ -99,7 +99,7 @@ Safety gates — all fail closed:
 - **Vault allowlist**: only `ALLOWED_VAULT_REFS` entries can connect/read/transition in live mode.
 - **Real transactions only**: the live adapter rejects the synthetic demo payload (tagged with the `dbdemo01` magic prefix) and any hex that is not a plausibly-sized serialized transaction. A live draw/repay/unlock without a real Taurus-signed `txHex` (paste it in the terminal's Advanced box) returns a `DENY` receipt.
 - **Signed proofs (optional strict mode)**: set `PROOF_RELAY_PUBLIC_KEYS` to require every health proof to carry a valid BIP-340 signature from an allowlisted oracle key; unsigned server-derived attestations are then rejected. Configure `HAT_ORACLE_URL` to fetch such attestations.
-- **Admin gate**: `POST /api/reset` (and live-mode position seeding) requires `x-admin-token` matching `ADMIN_TOKEN`; without `ADMIN_TOKEN` reset only works in fixture mode.
+- **Admin gate**: `POST /api/reset` requires `x-admin-token` matching `ADMIN_TOKEN`; with `ADMIN_TOKEN` unset the route is refused in every mode (fail closed), except when `ALLOW_INSECURE_RESET=true` is set for a local demo.
 
 ### Health attestations
 
@@ -138,6 +138,7 @@ All writes are awaited before a decision is returned. See [docs/deployment.md](d
 ## Documentation
 
 - [docs/deployment.md](docs/deployment.md) — configuration, Docker, CI, production checklist
+- [docs/security-review.md](docs/security-review.md) — security findings from review and how each was fixed
 - [docs/credit-economics.md](docs/credit-economics.md) — credit model decisions and open product questions
 - [docs/tachi-integration.md](docs/tachi-integration.md) — SDK/Taurus integration record and live-write procedure
 - [docs/threat-model.md](docs/threat-model.md) — trust assumptions and what the gates do (and do not) prove

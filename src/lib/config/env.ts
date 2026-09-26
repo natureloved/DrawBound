@@ -51,9 +51,44 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  // Local-demo escape hatch: when ADMIN_TOKEN is unset, destructive routes stay
+  // shut unless this is explicitly "true". Never set on a reachable deployment.
+  ALLOW_INSECURE_RESET: z.enum(BOOL_STRINGS).default("false"),
+  // Reverse-proxy hops in front of this app. Rate limiting only trusts
+  // x-forwarded-for when this is > 0; otherwise all callers share one bucket.
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().nonnegative().default(0),
 });
 
 export type EnvShape = z.infer<typeof envSchema>;
+
+/**
+ * Cross-field policy checks that run once at boot.
+ *
+ * The important one: live mode without a proof-trust anchor. In live mode the
+ * draw gate derives health from the server's own chain read and then broadcasts
+ * on that basis, which means the protocol is only as honest as its operator.
+ * Requiring an oracle (HAT_ORACLE_URL) or a strict proof allowlist makes the
+ * health input externally verifiable before any real write happens.
+ */
+export function validatePolicy(source: NodeJS.ProcessEnv = process.env): void {
+  const live = readBoolFrom(source, "LIVE_TACHI_ENABLED") || source.PROOF_MODE === "live";
+  if (!live) return;
+
+  const hasOracle = Boolean(source.HAT_ORACLE_URL?.trim());
+  const hasAllowlist = Boolean(source.PROOF_RELAY_PUBLIC_KEYS?.trim());
+  if (!hasOracle && !hasAllowlist) {
+    invalid(
+      "LIVE_TACHI_ENABLED",
+      "live mode requires externally verifiable health: set HAT_ORACLE_URL or PROOF_RELAY_PUBLIC_KEYS " +
+        "(otherwise the gate can only self-attest health and broadcast on it)",
+    );
+  }
+}
+
+function readBoolFrom(source: NodeJS.ProcessEnv, name: string): boolean {
+  const raw = source[name];
+  return raw === "true";
+}
 
 /** Comma-separated list envs (free-form strings, validated loosely). */
 export type ListEnvName = "ALLOWED_VAULT_REFS" | "PROOF_RELAY_PUBLIC_KEYS" | "ALLOWED_RECIPIENTS";
@@ -73,7 +108,9 @@ export function validateEnv(source: NodeJS.ProcessEnv = process.env): EnvShape {
 }
 
 // Fail fast at boot: an unparseable env must never start a server that looks healthy.
+// The policy check runs after it so its error is about configuration, not parsing.
 validateEnv();
+validatePolicy();
 
 function readBool(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
@@ -106,6 +143,13 @@ export const env = {
   },
   liveEnabled(): boolean {
     return readBool("LIVE_TACHI_ENABLED", false) || process.env.PROOF_MODE === "live";
+  },
+  /** Validated proof/adapter mode (fixture | live), never a raw process.env read. */
+  proofMode(): "fixture" | "live" {
+    const raw = process.env.PROOF_MODE;
+    if (raw === undefined || raw === "") return "fixture";
+    if (raw !== "fixture" && raw !== "live") invalid("PROOF_MODE", `got "${raw}"`);
+    return raw;
   },
   mainnetAllowed(): boolean {
     return readBool("ALLOW_MAINNET", false) && readBool("LIVE_TACHI_ENABLED", false) && !readBool("KILL_SWITCH", true);
@@ -159,6 +203,22 @@ export const env = {
   adminToken(): string | undefined {
     const raw = process.env.ADMIN_TOKEN?.trim();
     return raw ? raw : undefined;
+  },
+  /**
+   * Number of reverse-proxy hops in front of this app. Rate limiting only trusts
+   * `x-forwarded-for` when this is > 0; otherwise every caller shares one
+   * bucket (safe-by-default against header-rotation bypass).
+   */
+  trustedProxyHops(): number {
+    return readInt("TRUSTED_PROXY_HOPS", 0);
+  },
+  /**
+   * Local-demo escape hatch: when ADMIN_TOKEN is unset, destructive routes stay
+   * shut unless a deployment explicitly opts in. Never enable in a deployment
+   * that is reachable by anyone but the operator.
+   */
+  allowInsecureReset(): boolean {
+    return readBool("ALLOW_INSECURE_RESET", false);
   },
   list(name: ListEnvName): string[] {
     return readList(name);

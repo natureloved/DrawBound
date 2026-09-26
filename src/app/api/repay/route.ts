@@ -5,7 +5,7 @@ import { getTachiAdapter, isLiveMode } from "@/lib/tachi";
 import { deriveHealthProof } from "@/lib/proofs/derive";
 import { authenticateAction } from "@/lib/auth/action-auth";
 import { badRequest, guardRateLimit, nonceConflict, readJsonBody } from "@/app/api/_lib/http";
-import { addReceipt, getProcessedDraw, rememberProcessedDraw, savePosition, transitionFingerprint } from "@/lib/store";
+import { addReceipt, commitTransition, getPosition, getProcessedDraw, rememberProcessedDraw, transitionFingerprint, withPositionLock } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -16,19 +16,36 @@ export async function POST(request: Request) {
   const body = await readJsonBody(request);
   const auth = await authenticateAction(request, body, "REPAY");
   if (!auth.ok) return auth.response;
-  const { position: before, amount, nonce } = auth.value;
+  const { position: before, amount, nonce, session } = auth.value;
 
   if (amount < 0) return badRequest("Repay amount cannot be negative");
   // Repayment is always permitted (even while FROZEN) and capped at the outstanding debt.
-  const applied = Math.min(amount, before.debtUnits);
 
-  const fingerprint = transitionFingerprint(before.id, "REPAY", amount, nonce);
+  // Bound to the signer's public key (BIP-340 signatures are randomized, so the
+  // signature bytes themselves cannot key idempotency). Runs under the position
+  // lock like every transition.
+  const fingerprint = transitionFingerprint(before.id, "REPAY", amount, nonce, session.publicKey);
+
+  return withPositionLock(before.id, async () => {
   const previousReceipt = await getProcessedDraw(fingerprint);
   if (previousReceipt) {
-    return NextResponse.json({ decision: previousReceipt.result, receipt: previousReceipt, position: before, idempotent: true });
+    // Re-read so an idempotent replay reports the position's CURRENT state
+    // rather than a snapshot a later transition has already superseded.
+    const current = await getPosition(before.id);
+    return NextResponse.json({
+      decision: previousReceipt.result,
+      receipt: previousReceipt,
+      position: current ?? before,
+      idempotent: true,
+    });
   }
 
-  const stale = nonceConflict(nonce, before.nonce);
+  // Re-read under the lock so `current` reflects every transition that has
+  // already committed, not the pre-lock snapshot in `before`.
+  const current = (await getPosition(before.id)) ?? before;
+  const repayable = Math.min(amount, current.debtUnits);
+
+  const stale = nonceConflict(nonce, current.nonce);
   if (stale) return stale;
 
   const txHex = typeof body.txHex === "string" && body.txHex.trim() ? body.txHex.trim() : undefined;
@@ -36,66 +53,66 @@ export async function POST(request: Request) {
     const reason = "Live mode requires a real Taurus-signed txHex to broadcast";
     const receipt = createReceipt({
       id: createReceiptId(),
-      positionId: before.id,
+      positionId: current.id,
       action: "REPAY",
       requestedAmount: amount,
-      previousState: before.state,
+      previousState: current.state,
       result: "DENY",
       reason,
-      resultingState: before.state,
+      resultingState: current.state,
       createdAt: new Date().toISOString(),
     });
     await addReceipt(receipt);
-    return NextResponse.json({ decision: "DENY", reason, receipt, position: before });
+    return NextResponse.json({ decision: "DENY", reason, receipt, position: current });
   }
 
   let transition: { transitionRef: string };
   try {
-    transition = await getTachiAdapter().submitCreditTransition({ positionId: before.id, action: "REPAY", amount: applied, txHex });
+    transition = await getTachiAdapter().submitCreditTransition({ positionId: current.id, action: "REPAY", amount: repayable, txHex });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Live credit transition failed";
     const receipt = createReceipt({
       id: createReceiptId(),
-      positionId: before.id,
+      positionId: current.id,
       action: "REPAY",
       requestedAmount: amount,
-      previousState: before.state,
+      previousState: current.state,
       result: "DENY",
       reason,
-      resultingState: before.state,
+      resultingState: current.state,
       createdAt: new Date().toISOString(),
     });
     await addReceipt(receipt);
-    return NextResponse.json({ decision: "DENY", reason, receipt, position: before });
+    return NextResponse.json({ decision: "DENY", reason, receipt, position: current });
   }
 
-  const debtUnits = before.debtUnits - applied;
+  const debtUnits = current.debtUnits - repayable;
   const next = {
-    ...before,
+    ...current,
     debtUnits,
-    state: debtUnits === 0 ? ("REPAID" as const) : before.state,
-    exitStatus: debtUnits === 0 ? ("AVAILABLE" as const) : before.exitStatus,
-    nonce: before.nonce + 1,
+    state: debtUnits === 0 ? ("REPAID" as const) : current.state,
+    exitStatus: debtUnits === 0 ? ("AVAILABLE" as const) : current.exitStatus,
+    nonce: current.nonce + 1,
   };
   // Refresh the stored attestation to the post-repay debt so the UI and the next
   // gate see the real ratio immediately.
   next.latestProof = deriveHealthProof(next);
   assertPositionInvariants(next);
-  await savePosition(next);
 
   const receipt = createReceipt({
     id: createReceiptId(),
-    positionId: before.id,
+    positionId: current.id,
     action: "REPAY",
     requestedAmount: amount,
-    previousState: before.state,
+    previousState: current.state,
     result: "ALLOW",
-    reason: applied ? "Repayment accepted while collateral remains locked" : "No outstanding debt to repay",
+    reason: repayable ? "Repayment accepted while collateral remains locked" : "No outstanding debt to repay",
     resultingState: next.state,
     transitionRef: transition.transitionRef,
     createdAt: new Date().toISOString(),
   });
-  await addReceipt(receipt);
+  await commitTransition(next, receipt);
   await rememberProcessedDraw(fingerprint, receipt);
   return NextResponse.json({ decision: "ALLOW", receipt, position: next });
+  });
 }

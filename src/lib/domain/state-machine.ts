@@ -5,7 +5,10 @@ const transitions: Record<CreditState, Partial<Record<Action, CreditState>>> = {
   COLLATERALIZED: { DRAW: "ACTIVE", REPAY: "COLLATERALIZED", UNLOCK: "UNLOCKABLE" },
   CREDIT_OPEN: { DRAW: "ACTIVE", REPAY: "CREDIT_OPEN", UNLOCK: "UNLOCKABLE" },
   ACTIVE: { DRAW: "ACTIVE", REPAY: "ACTIVE", UNLOCK: "ACTIVE" },
-  FROZEN: { DRAW: "FROZEN", REPAY: "FROZEN", UNLOCK: "FROZEN" },
+  // FROZEN deliberately permits REPAY/UNLOCK (to itself) and NOT DRAW: the
+  // unilateral exit must stay available while frozen, but no new credit may be
+  // opened from a frozen position.
+  FROZEN: { REPAY: "FROZEN", UNLOCK: "FROZEN" },
   REPAID: { DRAW: "ACTIVE", REPAY: "REPAID", UNLOCK: "UNLOCKABLE" },
   UNLOCKABLE: { UNLOCK: "EXITED", REPAY: "UNLOCKABLE" },
   EXITED: {},
@@ -19,8 +22,4 @@ export function transitionState(state: CreditState, action: Action): CreditState
   const next = transitions[state][action];
   if (!next) throw new Error(`Illegal transition: ${state} -> ${action}`);
   return next;
-}
-
-export function stateLabel(state: CreditState): string {
-  return state.replaceAll("_", " ");
 }

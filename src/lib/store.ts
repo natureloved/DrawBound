@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Action, CreditPosition, DecisionReceipt, LoanHealthProof } from "./domain/types";
 import { calculateCreditLimit } from "./domain/covenant";
 import { fixtureProof } from "./proofs/fixtures";
@@ -16,14 +17,47 @@ import { env } from "./config/env";
  * a decision, the receipt and position update are durably queued to disk.
  */
 
-/** Deterministic position id derived from a vault ref (alphanumerics only). */
+/**
+ * Deterministic position id derived from the vault ref.
+ *
+ * A full SHA-256 over the raw ref is used rather than sanitizing + truncating:
+ * the old form mapped distinct refs onto the same id (`vault:taurus:signet:demo`
+ * and `vault-taurus-signet-demo` both became `pos_vaulttaurussignetdemo`), which
+ * let one caller connect a colliding ref and act on another caller's position.
+ * Hashing the whole ref makes collisions require a SHA-256 preimage.
+ */
 export function positionIdForVault(vaultRef: string): string {
-  return `pos_${vaultRef.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 32)}`;
+  return `pos_${createHash("sha256").update(vaultRef, "utf8").digest("hex").slice(0, 32)}`;
 }
 
 const positions = new Map<string, CreditPosition>();
 const processedDraws = new Map<string, DecisionReceipt>();
 let loadPromise: Promise<void> | null = null;
+
+/**
+ * Per-position transition lock.
+ *
+ * The credit gate is a read-modify-write (read position -> evaluate covenant ->
+ * save position). Without serialization, two concurrent approved transitions can
+ * both pass the nonce/credit-limit checks and the later save overwrites the
+ * earlier one — a double draw beyond the credit limit with a divergent receipt.
+ * Routing every transition through `withPositionLock` makes each one atomic by
+ * construction; the nonce check still rejects a stale request, just later.
+ */
+const positionLocks = new Map<string, Promise<unknown>>();
+
+export async function withPositionLock<T>(positionId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = positionLocks.get(positionId) ?? Promise.resolve();
+  // Swallow the predecessor's failure so one rejected transition cannot poison
+  // the lock for every later one on this position.
+  const run = previous.then(fn, fn);
+  positionLocks.set(positionId, run);
+  try {
+    return await run;
+  } finally {
+    if (positionLocks.get(positionId) === run) positionLocks.delete(positionId);
+  }
+}
 
 async function ensureLoaded(): Promise<void> {
   if (!loadPromise) {
@@ -43,9 +77,28 @@ async function ensureLoaded(): Promise<void> {
   await loadPromise;
 }
 
-/** Stable idempotency key for a transition attempt (time-independent). */
-export function transitionFingerprint(positionId: string, action: Action, amount: number, nonce: number): string {
-  return `${positionId}:${action}:${amount}:${nonce}`;
+/**
+ * Stable idempotency key for a transition attempt.
+ *
+ * Time-independent, so a retried signed request returns the original receipt.
+ *
+ * The signer's public key is folded in rather than the raw signature bytes:
+ * BIP-340 signing is randomized, so re-signing the same message produces a
+ * DIFFERENT signature each time — hashing the signature would defeat idempotency
+ * for every legitimate retry. The public key is stable across retries and still
+ * binds the record to the identity that signed it, so a receipt recorded by one
+ * key is never served to a request presenting another.
+ */
+export function transitionFingerprint(
+  positionId: string,
+  action: Action,
+  amount: number,
+  nonce: number,
+  signerPublicKey?: string,
+): string {
+  const base = `${positionId}:${action}:${amount}:${nonce}`;
+  if (!signerPublicKey) return base;
+  return `${base}:${createHash("sha256").update(signerPublicKey, "utf8").digest("hex").slice(0, 16)}`;
 }
 
 // --- Positions ---
@@ -89,6 +142,17 @@ export async function getReceipts(positionId?: string): Promise<DecisionReceipt[
 
 export async function addReceipt(receipt: DecisionReceipt): Promise<void> {
   await db.addReceipt(receipt);
+}
+
+/**
+ * Record an approved transition: the new position state and its receipt land
+ * together. Used by every path that mutates debt/state, so a crash can never
+ * show a position that advanced without its receipt (or a receipt the position
+ * never recorded).
+ */
+export async function commitTransition(position: CreditPosition, receipt: DecisionReceipt): Promise<void> {
+  await db.commitTransition(position, receipt);
+  positions.set(position.id, structuredClone(position));
 }
 
 // --- Idempotency ---
@@ -143,8 +207,16 @@ export async function connectVault(
   if (existing) {
     if (collateralSats > 0) {
       existing.collateralSats = collateralSats;
-      // Keep the invariant debt <= limit holdable even if the live read shrinks collateral.
-      existing.creditLimitUnits = Math.max(calculateCreditLimit(collateralSats), existing.debtUnits);
+      // The credit limit tracks the collateral-derived limit ONLY. Deriving it as
+      // max(derive(collateral), debtUnits) permanently widened borrowing capacity
+      // whenever the on-chain read shrank below the debt, so a drained vault kept
+      // a high limit. When collateral no longer supports the debt, the position
+      // freezes instead of raising the limit.
+      const derived = calculateCreditLimit(collateralSats);
+      existing.creditLimitUnits = derived;
+      if (existing.debtUnits > derived) {
+        existing.state = "FROZEN";
+      }
     }
     if (proof) existing.latestProof = proof;
     await savePosition(existing);

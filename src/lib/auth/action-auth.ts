@@ -26,6 +26,8 @@ export interface AuthenticatedAction {
   position: CreditPosition;
   amount: number;
   nonce: number;
+  /** The verified raw signature hex, used to bind the idempotency fingerprint. */
+  signature: string;
 }
 
 export type AuthResult =
@@ -48,6 +50,13 @@ export async function authenticateAction(
 
   const position = await getPosition(session.positionId);
   if (!position) return { ok: false, response: unauthorized("Session references an unknown position; reconnect") };
+
+  // The session is bound to one vault at connect time. A position id is derived
+  // from the vault ref, so a session must never be able to act on a position it
+  // was not opened for — re-check the binding instead of trusting the id alone.
+  if (position.vaultRef !== session.vaultRef) {
+    return { ok: false, response: forbidden("Session is not bound to this position's vault") };
+  }
 
   const amount = parseInteger(body, "amount");
   if (amount === null) return { ok: false, response: badRequest("amount must be an integer") };
@@ -77,5 +86,5 @@ export async function authenticateAction(
     return { ok: false, response: forbidden("Session signature over the canonical transition message is invalid") };
   }
 
-  return { ok: true, value: { session, position, amount, nonce } };
+  return { ok: true, value: { session, position, amount, nonce, signature } };
 }

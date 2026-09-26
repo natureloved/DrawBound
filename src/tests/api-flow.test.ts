@@ -182,7 +182,18 @@ describe("authenticated API flow (fixture mode)", () => {
     const posB = await call(positionsGet, req("/api/positions", { method: "GET", token: signerB.token }));
     expect(posA.json.position?.id).toBe(signerA.positionId);
     expect(posB.json.position?.id).toBe(signerB.positionId);
-    expect(posA.json.positions?.length).toBeGreaterThanOrEqual(2);
+
+    // An ordinary session sees only its own position — never the global list.
+    expect(posA.json.positions).toEqual([]);
+    expect(posB.json.positions).toEqual([]);
+
+    // Reading another session's position by id is refused.
+    const cross = await call(positionsGet, req(`/api/positions?id=${signerA.positionId}`, { method: "GET", token: signerB.token }));
+    expect(cross.status).toBe(403);
+
+    // Reading receipts for another position is refused too.
+    const crossReceipts = await call(receiptsGet, req(`/api/receipts?positionId=${signerA.positionId}`, { method: "GET", token: signerB.token }));
+    expect(crossReceipts.status).toBe(403);
   });
 
   it("serves health without auth and gates reset behind admin policy", async () => {
@@ -191,9 +202,18 @@ describe("authenticated API flow (fixture mode)", () => {
     expect(health.json.status).toBe("ok");
     expect(health.json.mode).toBe("fixture");
 
-    // Fixture mode without ADMIN_TOKEN: reset allowed (demo convenience).
+    // No ADMIN_TOKEN and no explicit opt-in: reset is refused in every mode.
     const openReset = await call(resetPost, req("/api/reset", {}));
-    expect(openReset.status).toBe(200);
+    expect(openReset.status).toBe(403);
+
+    // Explicit local-demo opt-in re-opens it, and only then.
+    process.env.ALLOW_INSECURE_RESET = "true";
+    try {
+      const optedIn = await call(resetPost, req("/api/reset", {}));
+      expect(optedIn.status).toBe(200);
+    } finally {
+      delete process.env.ALLOW_INSECURE_RESET;
+    }
 
     // With ADMIN_TOKEN configured: wrong token forbidden, right token allowed.
     process.env.ADMIN_TOKEN = "s3cret-admin";

@@ -173,6 +173,26 @@ export class SqliteStorageRepository {
     database.prepare("INSERT INTO receipts (id, position_id, json) VALUES (?, ?, ?)").run(receipt.id, receipt.positionId, JSON.stringify(receipt));
   }
 
+  /**
+   * Write the position and its receipt in ONE transaction.
+   *
+   * Without this, a crash between the two writes leaves a receipt asserting a
+   * decision the stored position never reflects (or the reverse). The decision
+   * and its audit trail are only meaningful together.
+   */
+  async commitTransition(position: CreditPosition, receipt: DecisionReceipt): Promise<void> {
+    const database = await this.open();
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.prepare("INSERT OR REPLACE INTO positions (id, json) VALUES (?, ?)").run(position.id, JSON.stringify(position));
+      database.prepare("INSERT INTO receipts (id, position_id, json) VALUES (?, ?, ?)").run(receipt.id, receipt.positionId, JSON.stringify(receipt));
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   // --- Idempotency / Processed Draws ---
 
   async getProcessedDraw(fingerprint: string): Promise<DecisionReceipt | undefined> {

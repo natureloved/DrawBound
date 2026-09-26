@@ -12,11 +12,14 @@ import { badRequest, guardRateLimit, nonceConflict, readJsonBody } from "@/app/a
 import {
   addReceipt,
   archiveProof,
+  commitTransition,
+  getPosition,
   getProcessedDraw,
   rememberProcessedDraw,
   savePosition,
   setProof,
   transitionFingerprint,
+  withPositionLock,
 } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -32,15 +35,25 @@ export async function POST(request: Request) {
 
   if (amount <= 0) return badRequest("Draw amount must be a positive whole unit");
 
-  // Idempotency keys on the transition identity (position + action + amount + nonce),
-  // which is time-independent, so a retried signed request returns the original receipt.
-  const fingerprint = transitionFingerprint(before.id, "DRAW", amount, nonce);
+  // Idempotency keys on the transition identity (position + action + amount +
+  // nonce + signer), which is time-independent, so a retried signed request
+  // returns the original receipt. The whole gate runs under the per-position
+  // lock: read -> evaluate -> write is a single atomic step, so two concurrent
+  // approved draws cannot both pass the checks and clobber each other.
+  const fingerprint = transitionFingerprint(before.id, "DRAW", amount, nonce, auth.value.session.publicKey);
+
+  return withPositionLock(before.id, async () => {
   const previousReceipt = await getProcessedDraw(fingerprint);
   if (previousReceipt) {
     return NextResponse.json({ decision: "ALLOW", receipt: previousReceipt, position: before, idempotent: true });
   }
 
-  const stale = nonceConflict(nonce, before.nonce);
+  // RE-READ inside the lock: `before` was resolved before any concurrent
+  // request on this position could mutate it, so its nonce and debt are a
+  // stale snapshot and must not gate the decision.
+  const current = (await getPosition(before.id)) ?? before;
+
+  const stale = nonceConflict(nonce, current.nonce);
   if (stale) return stale;
 
   // Refresh a current, debt-aware health attestation so the gate evaluates the position's
@@ -51,28 +64,28 @@ export async function POST(request: Request) {
   const freshProof =
     isLiveMode() || strictProofs
       ? await fetchLiveLoanHealthProof({
-          vaultRef: before.vaultRef,
-          positionId: before.id,
+          vaultRef: current.vaultRef,
+          positionId: current.id,
           network: env.network(),
-          debtUnits: before.debtUnits,
-          collateralSats: before.collateralSats,
+          debtUnits: current.debtUnits,
+          collateralSats: current.collateralSats,
         })
-      : deriveHealthProof(before);
+      : deriveHealthProof(current);
   const decision = verifyNormalizedProof(freshProof)
-    ? creditGate(before, freshProof, amount, nonce)
+    ? creditGate(current, freshProof, amount, nonce)
     : { allowed: false, reason: "Loan-health proof failed verification", resultingState: "FROZEN" as const };
 
   if (!decision.allowed) {
-    const next = { ...before, state: "FROZEN" as const };
+    const next = { ...current, state: "FROZEN" as const };
     await savePosition(next);
-    await setProof(before.id, freshProof);
+    await setProof(current.id, freshProof);
     const receipt = createReceipt({
       id: createReceiptId(),
-      positionId: before.id,
+      positionId: current.id,
       action: "DRAW",
       requestedAmount: amount,
       proofDigest: freshProof.digest,
-      previousState: before.state,
+      previousState: current.state,
       result: "DENY",
       reason: decision.reason,
       resultingState: next.state,
@@ -85,15 +98,15 @@ export async function POST(request: Request) {
   const txHex = typeof body.txHex === "string" && body.txHex.trim() ? body.txHex.trim() : undefined;
   if (isLiveMode() && !txHex) {
     const reason = "Live mode requires a real Taurus-signed txHex to broadcast";
-    const next = { ...before, state: "FROZEN" as const };
+    const next = { ...current, state: "FROZEN" as const };
     await savePosition(next);
     const receipt = createReceipt({
       id: createReceiptId(),
-      positionId: before.id,
+      positionId: current.id,
       action: "DRAW",
       requestedAmount: amount,
       proofDigest: freshProof.digest,
-      previousState: before.state,
+      previousState: current.state,
       result: "DENY",
       reason,
       resultingState: next.state,
@@ -106,23 +119,23 @@ export async function POST(request: Request) {
   let transition: { transitionRef: string };
   try {
     transition = await getTachiAdapter().submitCreditTransition({
-      positionId: before.id,
+      positionId: current.id,
       action: "DRAW",
       amount,
       proofDigest: freshProof.digest,
       txHex,
     });
   } catch (error) {
-    const next = { ...before, state: "FROZEN" as const };
+    const next = { ...current, state: "FROZEN" as const };
     await savePosition(next);
     const reason = error instanceof Error ? error.message : "Live credit transition failed";
     const receipt = createReceipt({
       id: createReceiptId(),
-      positionId: before.id,
+      positionId: current.id,
       action: "DRAW",
       requestedAmount: amount,
-      proofDigest: before.latestProof?.digest,
-      previousState: before.state,
+      proofDigest: freshProof.digest,
+      previousState: current.state,
       result: "DENY",
       reason,
       resultingState: next.state,
@@ -133,36 +146,38 @@ export async function POST(request: Request) {
   }
 
   const next = {
-    ...before,
-    debtUnits: before.debtUnits + amount,
+    ...current,
+    debtUnits: current.debtUnits + amount,
     state: "ACTIVE" as const,
     exitStatus: "LOCKED" as const,
-    drawCount: before.drawCount + 1,
-    nonce: before.nonce + 1,
+    drawCount: current.drawCount + 1,
+    nonce: current.nonce + 1,
   };
   assertPositionInvariants(next);
   // Keep the attestation current with the post-draw debt so the next gate sees real health,
   // and return the position WITH that proof so the UI never shows a stale ratio.
   const postDrawProof = deriveHealthProof(next);
   next.latestProof = postDrawProof;
-  await savePosition(next);
   await archiveProof(freshProof);
   await archiveProof(postDrawProof);
 
   const receipt = createReceipt({
     id: createReceiptId(),
-    positionId: before.id,
+    positionId: current.id,
     action: "DRAW",
     requestedAmount: amount,
     proofDigest: freshProof.digest,
-    previousState: before.state,
+    previousState: current.state,
     result: "ALLOW",
     reason: decision.reason,
     resultingState: next.state,
     transitionRef: transition.transitionRef,
     createdAt: new Date().toISOString(),
   });
-  await addReceipt(receipt);
+  // Position + receipt commit atomically: the debt that was actually drawn and
+  // the receipt documenting it can never disagree.
+  await commitTransition(next, receipt);
   await rememberProcessedDraw(fingerprint, receipt);
   return NextResponse.json({ decision: "ALLOW", receipt, position: next });
+  });
 }

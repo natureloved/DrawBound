@@ -43,7 +43,7 @@ async function main() {
 
   res = await j(await fetch(`${BASE}/api/draw`, { method: "POST", headers, body: JSON.stringify({ amount: 100, nonce: 0, signature: sign(msg("DRAW", 100, 0)) }) }));
   assert(res.idempotent === true && res.decision === "ALLOW", "replay returns original receipt (idempotent)");
-  const posAfterReplay = await j(await fetch(`${BASE}/api/positions?id=${positionId}`));
+  const posAfterReplay = await j(await fetch(`${BASE}/api/positions?id=${positionId}`, { headers }));
   assert(posAfterReplay.position.debtUnits === 100, "debt unchanged after replay");
 
   const stale = await fetch(`${BASE}/api/draw`, { method: "POST", headers, body: JSON.stringify({ amount: 50, nonce: 0, signature: sign(msg("DRAW", 50, 0)) }) });

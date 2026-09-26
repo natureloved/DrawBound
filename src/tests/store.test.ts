@@ -24,9 +24,19 @@ beforeAll(() => {
 });
 
 describe("multi-position store", () => {
-  it("derives deterministic position ids from vault refs", () => {
-    expect(positionIdForVault("tb1pABCxyz")).toBe("pos_tb1pABCxyz");
-    expect(positionIdForVault("tb1p:colon-dash")).toBe("pos_tb1pcolondash");
+  it("derives collision-resistant position ids from vault refs", () => {
+    const a = positionIdForVault("vault:taurus:signet:demo");
+    const b = positionIdForVault("vault-taurus-signet-demo");
+    const c = positionIdForVault("tb1p" + "q".repeat(58));
+    const d = positionIdForVault("tb1p" + "q".repeat(57) + "z");
+
+    // Distinct refs must never share a position id: a shared id would let one
+    // caller connect a colliding ref and act on another caller's position.
+    expect(a).not.toBe(b);
+    expect(c).not.toBe(d);
+    // Deterministic, and stable for the same input.
+    expect(positionIdForVault("vault:taurus:signet:demo")).toBe(a);
+    expect(a).toMatch(/^pos_[0-9a-f]{32}$/);
   });
 
   it("creates independent positions for independent vaults", async () => {

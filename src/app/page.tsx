@@ -485,14 +485,16 @@ export default function Home() {
                 <p>
                   DrawBound takes a different position:{" "}
                   <span className="text-[var(--text)]">
-                    credit issuance is a function of proof, not a function of trust.
+                    credit issuance is gated by proof, not by operator discretion.
                   </span>{" "}
-                  The protocol cannot mint, draw, or extend credit beyond what is cryptographically attested on Bitcoin at
-                  the moment of issuance.
+                  The covenant refuses any draw that outruns its attested collateral and health — today that attestation
+                  is computed by this server from its vault read, and in strict mode by a signature from an allowlisted
+                  oracle key.
                 </p>
                 <p>
-                  This is not a policy. It is not a risk framework. It is a structural invariant, enforced in the
-                  issuance path itself.
+                  That gate is code, not a policy document. What it does <em>not</em> do is enforce issuance inside
+                  Bitcoin script: on-chain enforcement lives in the Taurus vault&apos;s own unilateral-exit path, not in this
+                  app. See the <a href="#trust" className="underline">trust budget</a> for exactly what is and is not proven.
                 </p>
               </div>
             </div>
@@ -646,10 +648,16 @@ export default function Home() {
                 </p>
                 <p>
                   DrawBound inverts the order. The proof is generated <span className="text-[var(--text)]">before</span> the
-                  credit is drawn, and the issuance logic is structurally incapable of exceeding it. There is no after-the-fact
-                  reconciliation, because there is no gap in which credit can outrun proof.
+                  credit is drawn, and the draw gate refuses to exceed it — no draw is approved while the covenant is
+                  frozen, stale, over-limit, or under-collateralized. There is no after-the-fact reconciliation, because
+                  the gate runs on every issuance.
                 </p>
-                <p>This is the difference between a speed limit sign and a governor on the engine.</p>
+                <p>
+                  Be precise about the boundary: the gate is a check on this server (or on a signature from an allowlisted
+                  oracle). The on-chain consequence of a refusal is that the corresponding credit transition is never
+                  signed. The strongest on-chain guarantee is the Taurus vault&apos;s own unilateral-exit path, which
+                  DrawBound does not replace.
+                </p>
               </div>
 
               <div className="reveal grid grid-cols-2 gap-4">
@@ -703,7 +711,7 @@ export default function Home() {
               <div className="card p-7">
                 <div className="flex items-center justify-between mb-5">
                   <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">
-                    issuance.sol · core logic
+                    covenant.ts · draw gate logic
                   </div>
                   <div className="flex gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-[#e26d69]" />
@@ -810,8 +818,9 @@ export default function Home() {
               </div>
               <h3 className="font-display text-xl font-medium mb-3">Non-custodial</h3>
               <p className="text-sm text-[var(--text-muted)] leading-relaxed">
-                No custodian holds your keys, your BTC, or your credit. The protocol enforces vault access via Bitcoin
-                script and proof, not operator honesty.
+                No custodian holds your keys or your BTC: the browser generates an ephemeral signing key that never leaves
+                the device, and the vault&apos;s own script controls access. Note that in live mode a credit transition still
+                requires a transaction this server broadcasts, signed by the operator.
               </p>
             </div>
 
@@ -850,8 +859,9 @@ export default function Home() {
               </div>
               <h3 className="font-display text-xl font-medium mb-3">Censorship-resistant</h3>
               <p className="text-sm text-[var(--text-muted)] leading-relaxed">
-                Settlement finality is anchored to Bitcoin L1. No committee, no sequencer, no operator can interpose between
-                you and your collateral.
+                Collateral lives in a Taurus vault on Bitcoin; settlement and the unilateral exit are Bitcoin
+                transactions. This app is one client for that path — it is not itself a settlement layer, and a live write
+                is broadcast by the operator&apos;s node.
               </p>
             </div>
           </div>

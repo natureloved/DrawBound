@@ -18,12 +18,24 @@ export const policy = {
     return env.mainnetAllowed();
   },
   get adapterMode() {
-    return process.env.PROOF_MODE || "fixture";
+    return env.proofMode();
   },
 };
 
-export function assertWritePolicy(network: string, collateralSats: number): void {
-  if (network === "mainnet" && !policy.mainnetAllowed) throw new Error("Mainnet writes are disabled");
+/**
+ * Write-policy gates.
+ *
+ * The network is read from validated env inside the function, never from the
+ * caller: a caller-supplied network string is what let an unvalidated value skip
+ * the mainnet check. The first parameter is retained only for call-site
+ * compatibility.
+ */
+export function assertWritePolicy(_network: string, collateralSats: number): void {
+  if (policy.network === "mainnet" && !policy.mainnetAllowed) throw new Error("Mainnet writes are disabled");
   if (!Number.isInteger(collateralSats) || collateralSats <= 0) throw new Error("Collateral must be a positive whole number of sats");
-  if (collateralSats > policy.maxTestSats) throw new Error("Test collateral cap exceeded");
+  // The test collateral cap is a testnet guard; a mainnet deployment that has
+  // explicitly allowed mainnet is not sandboxed by it.
+  if (policy.network !== "mainnet" && collateralSats > policy.maxTestSats) {
+    throw new Error("Test collateral cap exceeded");
+  }
 }
