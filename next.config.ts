@@ -45,8 +45,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins,
-  // Emit a self-contained server bundle for slim container images.
-  output: "standalone",
+  // Emit a self-contained server bundle for slim container images (Docker).
+  // Disabled on Vercel where standalone output causes ENOENT on next-server.js.nft.json in Next.js 16.
+  output: process.env.VERCEL ? undefined : "standalone",
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
