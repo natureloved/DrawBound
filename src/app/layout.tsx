@@ -21,18 +21,31 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 /**
- * Canonical origin for absolute metadata URLs.
+ * Canonical origin for absolute metadata URLs (canonical links, sitemap).
  *
- * NOTE: DrawBound has no deployed domain yet — the README and Dockerfile
- * reference 127.0.0.1 only, so this is the repository origin, not a live
- * site. Update to the real host when one exists; until then social crawlers
- * resolve the banner against this origin.
+ * NOTE: DrawBound has no deployed domain recorded in the repo yet. Set this
+ * to the real deployment host once one exists (e.g. Vercel/Render). It only
+ * affects canonical/og:url — the social banner itself is pinned to a public
+ * URL below, so link previews work regardless of what origin the site runs on.
  */
 const SITE_URL = "https://natureloved.github.io/DrawBound";
 
+/**
+ * The social banner, pinned to a publicly reachable absolute URL.
+ *
+ * A link preview needs a URL the crawler can fetch *without* knowing where
+ * the site is deployed, and a self-referencing /brand/banner.png only
+ * resolves if that deployment exists and is reachable. GitHub raw + jsDelivr
+ * always serve this repo's files, so the preview works on any host, on any
+ * branch, and for anyone previewing the repository. raw.githubusercontent
+ * sends correct image/png with no rate limit for a public repo.
+ */
+const OG_IMAGE_URL =
+  "https://raw.githubusercontent.com/natureloved/DrawBound/main/public/brand/banner.png";
+
 export const metadata: Metadata = {
-  // Required so openGraph/twitter resolve /brand/banner.png to an absolute
-  // URL. Without metadataBase, Next warns and emits a relative path that most
+  // Required so openGraph/twitter resolve relative URLs to absolute ones.
+  // Without metadataBase Next warns and emits a relative path that most
   // crawlers and chat clients silently drop — which defeats the banner.
   metadataBase: new URL(SITE_URL),
   title: "DrawBound: Native BTC credit that cannot outrun its proof",
@@ -50,11 +63,18 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "DrawBound",
+    url: SITE_URL,
     title: "DrawBound: Credit that cannot outrun its proof",
     description:
       "Self-custodial native-BTC credit protocol. BTC collateral locked in TAURUS vaults, bounded by real-time HAT/RIP health proofs.",
     images: [
-      { url: "/brand/banner.png", width: 1200, height: 630, alt: "DrawBound — native BTC credit protocol" },
+      {
+        url: OG_IMAGE_URL,
+        secureUrl: OG_IMAGE_URL,
+        width: 1200,
+        height: 630,
+        alt: "DrawBound — credit that cannot outrun its proof. Native BTC credit protocol.",
+      },
     ],
   },
   twitter: {
@@ -62,7 +82,7 @@ export const metadata: Metadata = {
     title: "DrawBound: Credit that cannot outrun its proof",
     description:
       "Self-custodial native-BTC credit protocol. BTC collateral locked in TAURUS vaults, bounded by real-time HAT/RIP health proofs.",
-    images: ["/brand/banner.png"],
+    images: [OG_IMAGE_URL],
   },
   appleWebApp: {
     capable: true,

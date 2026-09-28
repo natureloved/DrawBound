@@ -393,30 +393,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* BRAND BANNER — the social/OG card, placed in-page directly under the
-          hero so the preview visual is also part of the product. <img> rather
-          than CSS background so it gets an alt text and lazy-loads. */}
-      <section className="relative px-4 sm:px-6 lg:px-10 pb-14 sm:pb-16 lg:pb-20">
-        <div className="max-w-6xl mx-auto">
-          <Reveal delay={0.15}>
-            <div className="card overflow-hidden rounded-2xl">
-              {/* eslint-disable-next-line @next/next/no-img-element -- brand art is a
-                  fixed pre-rendered asset at exactly 1200x630; next/image would
-                  re-encode it without any layout benefit. */}
-              <img
-                src="/brand/banner.png"
-                alt="DrawBound — credit that cannot outrun its proof. Native BTC credit protocol."
-                width={1200}
-                height={630}
-                loading="lazy"
-                decoding="async"
-                className="w-full h-auto block"
-              />
-            </div>
-          </Reveal>
-        </div>
-      </section>
-
       {/* MARQUEE — duplicated once so the loop is seamless at any width. */}
       <section className="border-y border-[var(--border-soft)] py-5 overflow-hidden bg-[var(--bg-2)]">
         <div className="marquee text-[var(--text-dim)] font-mono text-sm uppercase tracking-widest">
