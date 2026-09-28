@@ -439,10 +439,12 @@ export default function VaultPage() {
       {/* Topbar */}
       <header className="fixed top-0 left-0 right-0 z-50 nav-blur pt-[env(safe-area-inset-top)] border-b border-[var(--border-soft)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between gap-3">
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
-            <LogoMark size={28} uid="Vault" />
-            <span className="font-display text-lg font-medium tracking-tight hidden sm:inline">DrawBound</span>
-            <span className="text-[10px] font-mono text-[var(--gold)] border border-[var(--border)] px-2 py-0.5 rounded">VAULT</span>
+          <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
+            <div className="vault-logo-glow">
+              <LogoMark size={28} uid="Vault" />
+            </div>
+            <span className="font-display text-lg font-medium tracking-tight hidden sm:inline group-hover:text-gold transition-colors">DrawBound</span>
+            <span className="vault-badge">VAULT TERMINAL</span>
           </Link>
 
           <div className="flex items-center gap-2 sm:gap-3">
@@ -492,6 +494,46 @@ export default function VaultPage() {
               <div className="text-[10px] font-mono text-[var(--text-dim)] mt-0.5">Schnorr session · key held on device</div>
             </div>
           )}
+        </div>
+
+        {/* Terminal Protocol Banner */}
+        <div className="vault-banner mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[rgba(232,160,78,0.12)] border border-[rgba(232,160,78,0.25)] flex items-center justify-center shrink-0 text-base">
+                ⚡
+              </div>
+              <div>
+                <div className="text-xs font-mono font-medium text-[var(--gold)] flex items-center gap-2">
+                  <span>SATVM PROOF-BOUND CREDIT GATE</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[rgba(95,184,120,0.15)] text-[var(--proof)] border border-[rgba(95,184,120,0.3)]">
+                    ACTIVE
+                  </span>
+                </div>
+                <div className="text-[11px] text-[var(--text-muted)] font-mono mt-0.5">
+                  Protocol state bounded by Hat/Rip real-time zero-rehypothecation attestations
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 shrink-0">
+              <span className="banner-chip accent">
+                <span>LIMIT:</span>
+                <strong>{position?.creditLimitUnits ?? 0} UNITS</strong>
+              </span>
+              <span className="banner-chip proof">
+                <span>HEALTH:</span>
+                <strong>{proof?.healthBps ? (proof.healthBps / 100).toFixed(1) + "%" : "100%"}</strong>
+              </span>
+              <span className="banner-chip">
+                <span>LTV:</span>
+                <strong>{position?.minHealthBps ? (1000000 / position.minHealthBps).toFixed(0) + "%" : "80%"}</strong>
+              </span>
+              <span className="banner-chip">
+                <span>CHAIN:</span>
+                <strong>SIGNET</strong>
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Notices */}
@@ -547,8 +589,8 @@ export default function VaultPage() {
           </div>
         </div>
 
-        {/* 2-Column Grid (sequential on mobile via the tab switcher) */}
-        <div className="grid lg:grid-cols-12 gap-6">
+        {/* 2-Column Grid (aligned side-by-side on desktop, sequential on mobile via the tab switcher) */}
+        <div className="grid lg:grid-cols-12 gap-8 items-start">
           {/* Column 1: Vault & Collateral Position */}
           <div className={`lg:col-span-5 space-y-6 ${mobileTab === "vault" ? "" : "hidden lg:block"}`}>
             {/* Vault Connection Card */}
@@ -687,14 +729,14 @@ export default function VaultPage() {
             <div className="card p-5 sm:p-7">
               <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)] mb-5">Collateral &amp; Debt Position</div>
               <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-5">
-                <div className="p-3 sm:p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)]">
+                <div className="metric-tile">
                   <div className="text-xs font-mono text-[var(--text-dim)]">Locked Collateral</div>
                   <div className="font-display text-xl sm:text-2xl font-light text-[var(--gold)] mt-1.5">
                     {position?.collateralSats.toLocaleString() ?? "0"}{" "}
                     <span className="text-xs font-mono text-[var(--text-muted)]">sats</span>
                   </div>
                 </div>
-                <div className="p-3 sm:p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)]">
+                <div className="metric-tile">
                   <div className="text-xs font-mono text-[var(--text-dim)]">Debt Drawn</div>
                   <div className="font-display text-xl sm:text-2xl font-light text-[var(--proof)] mt-1.5">
                     {position?.debtUnits ?? 0}{" "}
@@ -846,14 +888,14 @@ export default function VaultPage() {
                       initial={reduced ? { opacity: 0 } : { opacity: 0, x: -12 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={reduced ? { duration: 0.15, delay: i * 0.02 } : { type: "spring", stiffness: 400, damping: 32, delay: i * 0.03 }}
-                      className="p-3 bg-[#090807] rounded-lg border border-[var(--border-soft)] text-xs font-mono flex flex-wrap items-center justify-between gap-2"
+                      className="audit-receipt-item"
                     >
                       <div className="min-w-0">
                         <span className="font-bold text-[var(--gold)] mr-2">{r.action}</span>
                         <span className={r.result === "ALLOW" ? "text-[var(--proof)]" : "text-[var(--danger)]"}>[{r.result}]</span>
                         <span className="text-[var(--text-dim)] ml-2 break-words">{r.reason}</span>
                       </div>
-                      <time className="text-[var(--text-dim)] text-[10px] whitespace-nowrap">{formatDate(r.createdAt)}</time>
+                      <time className="text-[var(--text-dim)] text-[10px] whitespace-nowrap shrink-0">{formatDate(r.createdAt)}</time>
                     </motion.div>
                   ))}
                 </div>

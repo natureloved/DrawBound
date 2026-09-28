@@ -87,21 +87,33 @@ export class TachiHttpClient {
     headers.set("accept", "application/json");
     if (init.body) headers.set("content-type", "application/json");
     if (this.apiKey) headers.set("X-Api-Key", this.apiKey);
-    const controller = new AbortController();
-    const timeout = this.timeoutMs > 0 ? setTimeout(() => controller.abort(), this.timeoutMs) : undefined;
-    try {
-      const response = await this.fetchImpl(`${this.baseUrl}${path}`, { ...init, headers, signal: controller.signal });
-      const body = await response.text();
-      let parsed: unknown;
-      try { parsed = body ? JSON.parse(body) : {}; } catch { parsed = { raw: body }; }
-      if (!response.ok) throw new Error(`Tachi request failed (${response.status}) ${path}`);
-      return parsed as T;
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") throw new Error(`Tachi request timed out: ${path}`);
-      throw error;
-    } finally {
-      if (timeout) clearTimeout(timeout);
+
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timeout = this.timeoutMs > 0 ? setTimeout(() => controller.abort(), this.timeoutMs) : undefined;
+      try {
+        const response = await this.fetchImpl(`${this.baseUrl}${path}`, { ...init, headers, signal: controller.signal });
+        const body = await response.text();
+        let parsed: unknown;
+        try { parsed = body ? JSON.parse(body) : {}; } catch { parsed = { raw: body }; }
+        if (!response.ok) {
+          if (attempt < maxAttempts && (response.status === 502 || response.status === 503 || response.status === 504)) {
+            await new Promise((res) => setTimeout(res, 500 * attempt));
+            continue;
+          }
+          throw new Error(`Tachi request failed (${response.status}) ${path}`);
+        }
+        return parsed as T;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") throw new Error(`Tachi request timed out: ${path}`);
+        if (attempt === maxAttempts) throw error;
+        await new Promise((res) => setTimeout(res, 500 * attempt));
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
     }
+    throw new Error(`Tachi request failed: ${path}`);
   }
 
   getHealth(): Promise<TachiHealthResponse> {

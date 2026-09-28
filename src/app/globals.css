@@ -957,3 +957,120 @@ p a,
   min-height: 0;
   min-width: 0;
 }
+
+/* ── Vault Terminal Specialized Components ─────────────────────────────────── */
+.vault-banner {
+  background: linear-gradient(135deg, rgba(232, 160, 78, 0.08) 0%, rgba(16, 14, 12, 0.8) 50%, rgba(95, 184, 120, 0.06) 100%);
+  border: 1px solid rgba(232, 160, 78, 0.22);
+  border-radius: 16px;
+  padding: 1.125rem 1.5rem;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+}
+
+.vault-banner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--gold) 35%, var(--proof) 70%, transparent 100%);
+  opacity: 0.8;
+}
+
+.banner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(10, 9, 8, 0.6);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-family: var(--font-jbmono), monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.banner-chip strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.banner-chip.accent strong {
+  color: var(--gold);
+}
+
+.banner-chip.proof strong {
+  color: var(--proof);
+}
+
+.vault-logo-glow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vault-logo-glow::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 10px;
+  background: radial-gradient(circle, rgba(232, 160, 78, 0.3) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.vault-badge {
+  font-family: var(--font-jbmono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: rgba(232, 160, 78, 0.08);
+  border: 1px solid rgba(232, 160, 78, 0.3);
+  padding: 2px 7px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  box-shadow: 0 0 12px -2px rgba(232, 160, 78, 0.2);
+}
+
+.metric-tile {
+  background: #090807;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 1rem 1.125rem;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.metric-tile:hover {
+  border-color: rgba(232, 160, 78, 0.35);
+  transform: translateY(-1px);
+}
+
+.audit-receipt-item {
+  background: #090807;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 0.875rem 1rem;
+  font-family: var(--font-jbmono), monospace;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.audit-receipt-item:hover {
+  border-color: rgba(232, 160, 78, 0.3);
+  background: #0d0c0b;
+}
+

@@ -55,11 +55,12 @@ Sessions then carry `ownershipVerified: true`. With `REQUIRE_OWNERSHIP_PROOF=tru
 ## Operator tooling
 
 ```bash
-pnpm exec tsx scripts/operator-live.mts derive                 # vault P2TR + ownership address from your key (live signet quorum)
-pnpm exec tsx scripts/operator-live.mts export-key             # mnemonic -> OPERATOR_PRIVATE_KEY (hex + WIF) for the step below
-pnpm exec tsx scripts/operator-live.mts ownership <vaultRef>   # challenge -> signed connect body
-pnpm exec tsx scripts/operator-live.mts status <vaultRef>      # locked-VTXO read
-pnpm exec tsx scripts/operator-live.mts fund-help              # funding + live-write procedure
+pnpm exec tsx scripts/operator-live.mts derive                  # vault P2TR + ownership address from your key (live signet quorum)
+pnpm exec tsx scripts/operator-live.mts export-key              # mnemonic -> OPERATOR_PRIVATE_KEY (hex + WIF) for the step below
+pnpm exec tsx scripts/operator-live.mts register <txid> [vout]  # register confirmed L1 funding UTXO on Tachi ledger (TxVaultOpen)
+pnpm exec tsx scripts/operator-live.mts ownership <vaultRef>    # challenge -> signed connect body
+pnpm exec tsx scripts/operator-live.mts status <vaultRef>       # locked-VTXO read
+pnpm exec tsx scripts/operator-live.mts fund-help               # funding + live-write procedure
 ```
 
 `derive` takes a mnemonic but `ownership` needs a 32-byte hex key, and the wallet
