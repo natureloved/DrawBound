@@ -17,7 +17,6 @@ import {
   signTachiTx,
   encodeTachiTx,
   type TaprootSigner,
-  getLockedVtxos,
   getAddressVtxos,
   getAccountNonce,
 } from "@tachibtc/taurus-vault-core";
