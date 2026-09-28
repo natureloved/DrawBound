@@ -21,27 +21,24 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 /**
- * Canonical origin for absolute metadata URLs (canonical links, sitemap).
+ * Canonical origin for absolute metadata URLs (canonical links, og:url).
  *
- * NOTE: DrawBound has no deployed domain recorded in the repo yet. Set this
- * to the real deployment host once one exists (e.g. Vercel/Render). It only
- * affects canonical/og:url — the social banner itself is pinned to a public
- * URL below, so link previews work regardless of what origin the site runs on.
+ * This is the live deployment. Vercel serves this project from main on every
+ * push, so it is the origin a shared link should resolve to.
  */
-const SITE_URL = "https://natureloved.github.io/DrawBound";
+const SITE_URL = "https://drawbound-eight.vercel.app";
 
 /**
- * The social banner, pinned to a publicly reachable absolute URL.
+ * The social banner.
  *
- * A link preview needs a URL the crawler can fetch *without* knowing where
- * the site is deployed, and a self-referencing /brand/banner.png only
- * resolves if that deployment exists and is reachable. GitHub raw + jsDelivr
- * always serve this repo's files, so the preview works on any host, on any
- * branch, and for anyone previewing the repository. raw.githubusercontent
- * sends correct image/png with no rate limit for a public repo.
+ * Pointed at the deployment's own copy of the asset rather than the
+ * repository, because a link preview should resolve to the site being shared.
+ * The asset is committed at public/brand/banner.png (1200x630), and Vercel
+ * serves public/ as static files, so `$SITE_URL/brand/banner.png` is the
+ * canonical URL for it. raw.githubusercontent.com is kept as the documented
+ * fallback only — do not point the tag back at the repo.
  */
-const OG_IMAGE_URL =
-  "https://raw.githubusercontent.com/natureloved/DrawBound/main/public/brand/banner.png";
+const OG_IMAGE_URL = `${SITE_URL}/brand/banner.png`;
 
 export const metadata: Metadata = {
   // Required so openGraph/twitter resolve relative URLs to absolute ones.
