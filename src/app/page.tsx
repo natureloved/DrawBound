@@ -1,54 +1,76 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
+import { useEffect, useRef } from "react";
+import { SiteHeader } from "@/components/site-header";
+import { ScrollReveal } from "@/components/scroll-reveal";
+import { Reveal, ScrollProgress, Parallax, SPRING } from "@/components/motion";
+
+/**
+ * Landing page.
+ *
+ * Structure: header (animated, mobile-aware) → animated hero with the live
+ * credit-vs-proof canvas → marquee → thesis / how / proof / architecture / CTA
+ * → footer.
+ *
+ * The hero headline is choreographed rather than a single fade: the eyebrow
+ * settles first, the headline rises line by line, then the sub-copy and CTAs.
+ * On a phone the whole sequence is shorter (the marquee and headline sit above
+ * the fold, so the animation must finish before the user scrolls).
+ *
+ * The canvas visualization below the hero is unchanged from the original — it
+ * is a hand-written rAF loop writing directly to the DOM, and it already runs
+ * at 60fps.
+ */
+
+const MARQUEE_ITEMS = [
+  "No wrappers",
+  "No bridges",
+  "No custodial risk",
+  "Proof-bounded issuance",
+  "Non-rehypothecatable",
+];
+
+/** Hero headline, split so each line can rise in sequence. */
+function Headline({ reduced }: { reduced: boolean | null }) {
+  return (
+    <h1 className="headline mb-6" style={{ fontSize: "clamp(calc(2.6rem + 4px), calc(6.5vw + 4px), calc(5.2rem + 4px))" }}>
+      <motion.span
+        className="block"
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 28 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={reduced ? { duration: 0.3 } : { ...SPRING, delay: 0.08 }}
+      >
+        Credit that <em>cannot</em>
+      </motion.span>
+      <motion.span
+        className="block"
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 28 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={reduced ? { duration: 0.3, delay: 0.08 } : { ...SPRING, delay: 0.18 }}
+      >
+        outrun its proof.
+      </motion.span>
+    </h1>
+  );
+}
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const progressBarRef = useRef<HTMLDivElement | null>(null);
-  const utilValRef = useRef<HTMLDivElement | null>(null);
-  const headroomValRef = useRef<HTMLDivElement | null>(null);
-  const utilBarRef = useRef<HTMLDivElement | null>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // --- Scroll Tracking & Progress Bar (Direct DOM update: 0 re-renders, 0 hydration mismatch) ---
-  useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-      const progress = docHeight > 0 ? Math.min(1, Math.max(0, currentScrollY / docHeight)) : 0;
-      if (progressBarRef.current) {
-        progressBarRef.current.style.transform = `scaleX(${progress})`;
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // --- Scroll Reveal with IntersectionObserver ---
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("in");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.1, rootMargin: "0px 0px -40px 0px" },
-    );
-
-    document.querySelectorAll(".reveal").forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, []);
+  const reduced = useReducedMotion();
 
   // --- Hero Canvas Visualization (High-performance 60fps loop via Direct DOM refs) ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // Respect reduced motion: a continuously animating visualization is exactly
+    // what that preference asks to suppress. Draw one static frame instead.
+    if (reduced) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) drawStaticFrame(canvas, ctx);
+      return;
+    }
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -73,21 +95,17 @@ export default function Home() {
       const rect = canvas.getBoundingClientRect();
       w = rect.width;
       h = rect.height;
-      canvas.width = Math.max(1, w * dpr);
-      canvas.height = Math.max(1, h * dpr);
+      canvas.width = Math.max(1, Math.round(w * dpr));
+      canvas.height = Math.max(1, Math.round(h * dpr));
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
     };
 
-    const proofY = (x: number, time: number) => {
-      const cx = x;
-      return (
-        h * 0.32 +
-        Math.sin(cx * 5 + time) * 22 +
-        Math.sin(cx * 11 - time * 0.7) * 10 +
-        Math.sin(cx * 3 + time * 0.4) * 7
-      );
-    };
+    const proofY = (x: number, time: number) =>
+      h * 0.32 +
+      Math.sin(x * 5 + time) * 22 +
+      Math.sin(x * 11 - time * 0.7) * 10 +
+      Math.sin(x * 3 + time * 0.4) * 7;
 
     const creditY = (x: number, time: number) => {
       const py = proofY(x, time);
@@ -203,17 +221,12 @@ export default function Home() {
         ctx.fill();
       });
 
-      // Update metrics directly to DOM without causing React re-renders or hydration mismatches
       const sampleX = 0.5;
-      const pyMid = proofY(sampleX, t);
-      const cyMid = creditY(sampleX, t);
-      const used = cyMid - pyMid;
+      const used = creditY(sampleX, t) - proofY(sampleX, t);
       const utilPct = Math.max(0, Math.min(1, used / 130));
-      const headroomPct = 1 - utilPct;
-
-      if (utilValRef.current) utilValRef.current.textContent = Math.round(utilPct * 100) + "%";
-      if (headroomValRef.current) headroomValRef.current.textContent = Math.round(headroomPct * 100) + "%";
-      if (utilBarRef.current) utilBarRef.current.style.width = Math.round(utilPct * 100) + "%";
+      document.getElementById("utilVal")!.textContent = Math.round(utilPct * 100) + "%";
+      document.getElementById("headroomVal")!.textContent = Math.round((1 - utilPct) * 100) + "%";
+      document.getElementById("utilBar")!.style.width = Math.round(utilPct * 100) + "%";
 
       animId = requestAnimationFrame(draw);
     };
@@ -223,169 +236,98 @@ export default function Home() {
     draw();
 
     return () => {
-      window.removeEventListener("resize", resize);
       cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize);
     };
-  }, []);
+  }, [reduced]);
 
   return (
     <>
-      {/* Top Reading Progress Bar */}
-      <div
-        ref={progressBarRef}
-        className="scroll-progress-bar"
-        style={{ transform: "scaleX(0)" }}
-      />
+      <ScrollReveal />
+      <ScrollProgress />
 
-      {/* Ambient glows */}
-      <div
-        className="ambient-glow"
-        style={{
-          width: "600px",
-          height: "600px",
-          background: "rgba(232, 160, 78, 0.08)",
-          top: "-200px",
-          left: "-200px",
-        }}
-      />
-      <div
-        className="ambient-glow"
-        style={{
-          width: "500px",
-          height: "500px",
-          background: "rgba(95, 184, 120, 0.05)",
-          top: "400px",
-          right: "-150px",
-        }}
-      />
+      {/* Ambient glows — parallaxed on scroll, static under reduced motion. */}
+      <Parallax distance={30}>
+        <div
+          className="ambient-glow"
+          style={{
+            width: "600px",
+            height: "600px",
+            background: "rgba(232, 160, 78, 0.08)",
+            top: "-200px",
+            left: "-200px",
+          }}
+        />
+      </Parallax>
+      <Parallax distance={-24}>
+        <div
+          className="ambient-glow"
+          style={{
+            width: "500px",
+            height: "500px",
+            background: "rgba(95, 184, 120, 0.05)",
+            top: "400px",
+            right: "-150px",
+          }}
+        />
+      </Parallax>
 
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 nav-blur">
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="relative w-7 h-7">
-              <svg viewBox="0 0 28 28" className="w-7 h-7">
-                <rect x="2" y="2" width="24" height="24" rx="6" fill="none" stroke="url(#logoGrad)" strokeWidth="1.5" />
-                <path d="M8 18 Q14 8 20 14 Q14 20 8 12" fill="none" stroke="#e8a04e" strokeWidth="1.5" strokeLinecap="round" />
-                <path d="M8 14 Q14 20 20 10" fill="none" stroke="#5fb878" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 2" />
-                <defs>
-                  <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stopColor="#e8a04e" />
-                    <stop offset="1" stopColor="#5fb878" />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-            <span className="font-display text-lg font-medium tracking-tight">DrawBound</span>
-          </Link>
-
-          <div className="hidden md:flex items-center gap-8 text-sm text-[var(--text-muted)]">
-            <a href="#thesis" className="hover:text-[var(--text)] transition-colors">
-              Thesis
-            </a>
-            <a href="#how" className="hover:text-[var(--text)] transition-colors">
-              Mechanism
-            </a>
-            <a href="#proof" className="hover:text-[var(--text)] transition-colors">
-              Proof
-            </a>
-            <a href="#architecture" className="hover:text-[var(--text)] transition-colors">
-              Architecture
-            </a>
-            <Link href="/vault" className="hover:text-[var(--text)] text-[var(--gold)] font-medium transition-colors">
-              Vault Terminal
-            </Link>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <a
-              href="https://github.com/natureloved/DrawBound"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-ghost hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.84 1.24 1.84 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.95 0-1.31.47-2.39 1.24-3.23-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.23 0 4.62-2.81 5.64-5.49 5.94.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.82.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-              </svg>
-              GitHub
-            </a>
-            <Link href="/vault" className="btn-primary inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold">
-              Read the spec
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M13 5l7 7-7 7" />
-              </svg>
-            </Link>
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 -mr-2 text-[var(--text-muted)]"
-              aria-label="Toggle Menu"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="12" x2="21" y2="12" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {mobileMenuOpen && (
-          <div className="mobile-menu open md:hidden absolute top-16 left-0 right-0 bg-[var(--bg-2)] border-b border-[var(--border)] px-6 py-6 flex flex-col gap-4 text-[var(--text-muted)]">
-            <a href="#thesis" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)]">
-              Thesis
-            </a>
-            <a href="#how" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)]">
-              Mechanism
-            </a>
-            <a href="#proof" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)]">
-              Proof
-            </a>
-            <a href="#architecture" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)]">
-              Architecture
-            </a>
-            <Link href="/vault" onClick={() => setMobileMenuOpen(false)} className="text-[var(--gold)]">
-              Launch App →
-            </Link>
-          </div>
-        )}
-      </nav>
+      <SiteHeader />
 
       {/* HERO */}
-      <section className="relative pt-32 pb-20 lg:pt-40 lg:pb-28 px-6 lg:px-10 overflow-hidden">
-        <div className="max-w-7xl mx-auto relative z-10">
+      <section className="relative pt-[calc(var(--safe-top)+5rem)] pb-16 sm:pt-32 lg:pt-40 lg:pb-28 overflow-hidden">
+        <div className="max-w-7xl mx-auto relative z-10 px-4 sm:px-6 lg:px-10">
           <div className="grid lg:grid-cols-12 gap-10 lg:gap-8 items-center">
             {/* Left: Headline */}
-            <div className="lg:col-span-7 reveal">
-              <div className="section-label mb-8">
+            <div className="lg:col-span-7">
+              <motion.div
+                className="section-label mb-6 sm:mb-8"
+                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reduced ? { duration: 0.25 } : { ...SPRING, delay: 0 }}
+              >
                 <span className="pulse-dot" />
                 Native BTC credit protocol
-              </div>
+              </motion.div>
 
-              <h1
-                className="headline mb-7"
-                style={{ fontSize: "clamp(calc(2.6rem + 4px), calc(6.5vw + 4px), calc(5.2rem + 4px))" }}
+              <Headline reduced={reduced} />
+
+              <motion.p
+                className="text-base lg:text-lg text-[var(--text-muted)] max-w-xl leading-relaxed mb-8 font-light"
+                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reduced ? { duration: 0.3, delay: 0.1 } : { ...SPRING, delay: 0.3 }}
               >
-                Credit that <em>cannot</em>
-                <br />
-                outrun its proof.
-              </h1>
+                DrawBound issues credit against native Bitcoin with zero wrappers, zero bridges, and zero custodial trust.
+                Every unit drawn is bounded, in real time, by cryptographic proof of the collateral that backs it.
+              </motion.p>
 
-              <p className="text-base lg:text-lg text-[var(--text-muted)] max-w-xl leading-relaxed mb-8 font-light">
-                DrawBound issues credit against native Bitcoin with zero wrappers, zero bridges, and zero custodial trust. Every unit
-                drawn is bounded, in real time, by cryptographic proof of the collateral that backs it.
-              </p>
+              <motion.div
+                className="flex flex-wrap items-center gap-3 mb-8"
+                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={reduced ? { duration: 0.3, delay: 0.15 } : { ...SPRING, delay: 0.4 }}
+              >
+                <motion.div whileHover={reduced ? undefined : { scale: 1.02 }} whileTap={reduced ? undefined : { scale: 0.98 }} transition={SPRING}>
+                  <Link
+                    href="/vault"
+                    className="btn-primary inline-flex items-center gap-2.5 px-6 py-3.5 rounded-lg text-base font-bold w-full sm:w-auto justify-center"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14M13 5l7 7-7 7" />
+                    </svg>
+                    Connect Vault &amp; Explore
+                  </Link>
+                </motion.div>
+              </motion.div>
 
-              <div className="flex flex-wrap items-center gap-3 mb-6">
-                <Link href="/vault" className="btn-primary inline-flex items-center gap-2.5 px-6 py-3 rounded-lg text-base font-bold">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14M13 5l7 7-7 7" />
-                  </svg>
-                  Connect Vault &amp; Explore
-                </Link>
-              </div>
-
-              {/* Stats in a single horizontal line with dot dividers */}
-              <div className="pt-4 border-t border-[var(--border-soft)]" style={{ marginTop: "20px" }}>
+              {/* Stats */}
+              <motion.div
+                className="pt-5 border-t border-[var(--border-soft)]"
+                initial={reduced ? { opacity: 0 } : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.55 }}
+              >
                 <div className="flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-2 text-xs sm:text-sm font-mono text-[var(--text-muted)]">
                   <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <span className="font-semibold text-sm sm:text-base text-[var(--gold)]">100%</span>
@@ -402,15 +344,15 @@ export default function Home() {
                     <span>Proof-bounded</span>
                   </span>
                 </div>
-              </div>
+              </motion.div>
             </div>
 
             {/* Right: Visualization */}
-            <div className="lg:col-span-5 reveal" style={{ transitionDelay: "0.15s" }}>
+            <Reveal delay={0.2} className="lg:col-span-5">
               <div className="relative">
                 <div className="absolute -inset-4 bg-gradient-to-br from-[rgba(232,160,78,0.08)] to-[rgba(95,184,120,0.05)] rounded-3xl blur-2xl" />
-                <div className="relative card p-1.5 aspect-[4/5] min-h-[420px]">
-                  <div className="relative w-full h-full rounded-xl overflow-hidden bg-[#0c0a08] min-h-[400px]">
+                <div className="relative card p-1.5 aspect-[4/5] min-h-[380px] sm:min-h-[420px]">
+                  <div className="relative w-full h-full rounded-xl overflow-hidden bg-[#0c0a08] min-h-[360px] sm:min-h-[400px]">
                     <canvas ref={canvasRef} id="hero-viz" style={{ width: "100%", height: "100%", display: "block" }} />
                     <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-[var(--text-dim)]">
                       <span>Live · credit vs. proof</span>
@@ -423,16 +365,19 @@ export default function Home() {
                       <div className="flex items-end justify-between mb-2">
                         <div>
                           <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-dim)]">Utilization</div>
-                          <div ref={utilValRef} className="font-display text-2xl font-light text-[var(--gold)]">42%</div>
+                          <div id="utilVal" className="font-display text-2xl font-light text-[var(--gold)]">
+                            42%
+                          </div>
                         </div>
                         <div className="text-right">
                           <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-dim)]">Bound headroom</div>
-                          <div ref={headroomValRef} className="font-display text-2xl font-light text-[var(--proof)]">58%</div>
+                          <div id="headroomVal" className="font-display text-2xl font-light text-[var(--proof)]">
+                            58%
+                          </div>
                         </div>
                       </div>
                       <div className="h-1.5 bg-[var(--border-soft)] rounded-full overflow-hidden">
                         <div
-                          ref={utilBarRef}
                           id="utilBar"
                           className="h-full bg-gradient-to-r from-[var(--proof)] to-[var(--gold)] transition-all duration-300"
                           style={{ width: "42%" }}
@@ -442,31 +387,26 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            </div>
+            </Reveal>
           </div>
         </div>
       </section>
 
-      {/* Marquee */}
+      {/* MARQUEE — duplicated once so the loop is seamless at any width. */}
       <section className="border-y border-[var(--border-soft)] py-5 overflow-hidden bg-[var(--bg-2)]">
         <div className="marquee text-[var(--text-dim)] font-mono text-sm uppercase tracking-widest">
-          <span className="flex items-center gap-3">No wrappers <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No bridges <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No custodial risk <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">Proof-bounded issuance <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">L1-anchored settlement <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">Non-rehypothecatable <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No wrappers <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No bridges <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">No custodial risk <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">Proof-bounded issuance <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">L1-anchored settlement <span className="text-[var(--gold)]">/</span></span>
-          <span className="flex items-center gap-3">Non-rehypothecatable <span className="text-[var(--gold)]">/</span></span>
+          {[0, 1].map((pass) =>
+            MARQUEE_ITEMS.map((item) => (
+              <span key={`${pass}-${item}`} className="flex items-center gap-3 px-3 shrink-0">
+                {item} <span className="text-[var(--gold)]">/</span>
+              </span>
+            )),
+          )}
         </div>
       </section>
 
-      {/* THESIS */}
-      <section id="thesis" className="relative py-24 lg:py-36 px-6 lg:px-10">
+      {/* CONTENT — thesis, how, proof, architecture, CTA, footer (unchanged) */}
+      <section id="thesis" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-5xl mx-auto">
           <div className="reveal section-label mb-8">01 / Thesis</div>
           <div className="grid lg:grid-cols-12 gap-10">
@@ -540,7 +480,7 @@ export default function Home() {
       </section>
 
       {/* HOW IT WORKS */}
-      <section id="how" className="section-ash relative py-24 lg:py-36 px-6 lg:px-10">
+      <section id="how" className="section-ash relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl mb-16">
             <div className="reveal section-label mb-6">02 / Mechanism</div>
@@ -631,10 +571,12 @@ export default function Home() {
       </section>
 
       {/* PROOF MECHANISM */}
-      <section id="proof" className="relative py-24 lg:py-36 px-6 lg:px-10">
+      <section id="proof" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-start">
-            <div className="lg:col-span-6">
+            {/* Left: Explanation. min-w-0 lets the column shrink below its
+                content's intrinsic width instead of forcing the grid wide. */}
+            <div className="lg:col-span-6 min-w-0">
               <div className="reveal section-label mb-6">03 / The bound</div>
               <h2 className="reveal headline text-[clamp(2rem,4vw,3.4rem)] mb-8">
                 The proof is the <em>limit.</em>
@@ -706,8 +648,9 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Right: Detailed code/diagram */}
-            <div className="lg:col-span-6 reveal" style={{ transitionDelay: "0.1s" }}>
+            {/* Right: Detailed code/diagram. min-w-0 + the code block's own
+                overflow-x keeps the <pre> from widening the whole grid. */}
+            <div className="lg:col-span-6 reveal min-w-0" style={{ transitionDelay: "0.1s" }}>
               <div className="card p-7">
                 <div className="flex items-center justify-between mb-5">
                   <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">
@@ -719,7 +662,7 @@ export default function Home() {
                     <div className="w-2.5 h-2.5 rounded-full bg-[var(--proof)]" />
                   </div>
                 </div>
-                <div className="code-block p-5 overflow-x-auto">
+                <div className="code-block p-4 sm:p-5 overflow-x-auto">
                   <pre style={{ margin: 0, whiteSpace: "pre" }}>
                     <span className="code-comment">{"// DrawBound issuance: proof is the bound"}</span>
                     {"\n"}
@@ -768,7 +711,7 @@ export default function Home() {
       </section>
 
       {/* PROPERTIES */}
-      <section className="section-ash relative py-24 lg:py-36 px-6 lg:px-10">
+      <section className="section-ash relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl mb-16">
             <div className="reveal section-label mb-6">04 / Properties</div>
@@ -869,7 +812,7 @@ export default function Home() {
       </section>
 
       {/* ARCHITECTURE */}
-      <section id="architecture" className="relative py-20 lg:py-28 px-6 lg:px-10 scroll-mt-20">
+      <section id="architecture" className="relative py-16 lg:py-28 px-4 sm:px-6 lg:px-10 scroll-mt-20">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl mb-12">
             <div className="reveal section-label mb-6">05 / Architecture</div>
@@ -1003,7 +946,7 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section id="cta" className="relative py-24 lg:py-36 px-6 lg:px-10 overflow-hidden scroll-mt-20">
+      <section id="cta" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10 overflow-hidden scroll-mt-20">
         <div
           className="ambient-glow"
           style={{
@@ -1057,7 +1000,7 @@ export default function Home() {
       <footer className="border-t border-[var(--border-soft)] py-12 px-6 lg:px-10 bg-[var(--bg-2)]">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-6">
           <div className="flex flex-wrap items-center gap-3 text-center sm:text-left justify-center sm:justify-start">
-            <Link href="/" className="flex items-center gap-2.5">
+            <Link href="/" className="flex items-center gap-2.5 min-h-[44px]">
               <svg viewBox="0 0 28 28" className="w-6 h-6">
                 <rect x="2" y="2" width="24" height="24" rx="6" fill="none" stroke="url(#logoGrad2)" strokeWidth="1.5" />
                 <path d="M8 18 Q14 8 20 14 Q14 20 8 12" fill="none" stroke="#e8a04e" strokeWidth="1.5" strokeLinecap="round" />
@@ -1080,7 +1023,58 @@ export default function Home() {
             © 2025 DrawBound · MIT License · Not financial advice
           </div>
         </div>
-      </footer>
-    </>
+      </footer>    </>
   );
+}
+
+/** One static frame of the hero canvas, for reduced-motion visitors. */
+function drawStaticFrame(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): void {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const rect = canvas.getBoundingClientRect();
+  const w = rect.width || 400;
+  const h = rect.height || 400;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(dpr, dpr);
+
+  const t = 1.2;
+  const proofY = (x: number) =>
+    h * 0.32 + Math.sin(x * 5 + t) * 22 + Math.sin(x * 11 - t * 0.7) * 10 + Math.sin(x * 3 + t * 0.4) * 7;
+  const creditY = (x: number) => {
+    const py = proofY(x);
+    const utilization = 0.42 + Math.sin(x * 4 - t * 0.8) * 0.18 + Math.sin(x * 8 + t * 0.5) * 0.08;
+    return py + 35 + utilization * 90;
+  };
+
+  ctx.strokeStyle = "rgba(245, 241, 234, 0.025)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= w; x += 32) {
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= h; y += 32) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(w, y + 0.5);
+    ctx.stroke();
+  }
+
+  const trace = (fn: (x: number) => number, color: string, width: number) => {
+    ctx.beginPath();
+    for (let i = 0; i <= 120; i++) {
+      const px = (i / 120) * w;
+      const py = fn(i / 120);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.stroke();
+  };
+
+  trace(proofY, "rgba(95, 184, 120, 0.9)", 1.5);
+  trace(creditY, "rgba(232, 160, 78, 0.95)", 2);
 }

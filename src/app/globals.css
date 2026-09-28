@@ -1,4 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+@source "../**/*.{ts,tsx}";
 
 :root {
   --bg: #0a0908;
@@ -337,6 +339,17 @@ body::before {
   line-height: 1.85;
 }
 
+/* The <pre> uses white-space:pre, so its intrinsic width is the longest line,
+   which is far wider than a phone. `min-width: max-content` makes the pre lay
+   out at that full width inside the scroll container, so the container has a
+   real scroll range instead of letting the spans paint past the card edge
+   (and silently widening the page). */
+.code-block > pre,
+.code-block pre {
+  min-width: max-content;
+  max-width: none;
+}
+
 .code-comment { color: var(--text-dim); }
 .code-keyword { color: var(--gold); font-weight: 600; }
 .code-string { color: var(--proof-soft); }
@@ -485,7 +498,7 @@ body::before {
 /* Badges & Tags */
 .status-tag {
   font-family: var(--font-jbmono), monospace;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 4px 8px;
@@ -532,6 +545,12 @@ body::before {
 
 /* Layout utilities */
 .max-w-7xl { max-width: 80rem; margin-left: auto; margin-right: auto; }
+
+/* min-height utilities (hand-rolled to match the rest of this file's set).
+   Used for 44px touch targets; arbitrary values supported. */
+.min-h-\[44px\] { min-height: 44px; }
+.min-h-\[56px\] { min-height: 56px; }
+.min-h-\[64px\] { min-height: 64px; }
 .max-w-5xl { max-width: 64rem; margin-left: auto; margin-right: auto; }
 .max-w-4xl { max-width: 56rem; margin-left: auto; margin-right: auto; }
 .max-w-3xl { max-width: 48rem; }
@@ -694,4 +713,247 @@ body::before {
   .lg\:text-xl { font-size: 1.25rem; line-height: 1.75rem; }
   .lg\:text-left { text-align: left; }
   .lg\:justify-start { justify-content: flex-start; }
+}
+
+/* ==========================================================================
+   MOBILE-FIRST FOUNDATION
+   Everything above was written desktop-first with three min-width breakpoints.
+   The rules below make the phone experience correct WITHOUT touching the
+   desktop layout, by (a) fixing tap targets and overflow at the base, and
+   (b) padding the fixed chrome for notches and home indicators.
+   ========================================================================== */
+
+/* 1. Safe-area padding: iOS renders under the notch/home indicator when
+   viewport-fit=cover is set, so content must be padded back explicitly.
+   These apply to the fixed header (see SiteHeader) and any bottom bar. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nav-h: 4rem;
+}
+
+/* 2. Numeric keyboard on the amount input, but no autocorrect artifacts on
+   vault-address fields. */
+.vault-input {
+  font-size: 16px; /* >=16px or iOS Safari zooms on focus */
+}
+
+/* 3. Tap targets. 44x44 is Apple's minimum; 48x48 is Material's. Anything
+   smaller is a mis-tap, and the header/nav are the worst offenders. */
+a,
+button,
+[role="button"],
+summary,
+input,
+textarea,
+select {
+  touch-action: manipulation; /* kills the 300ms double-tap delay */
+}
+
+button,
+.btn-primary,
+.btn-ghost,
+.status-tag {
+  min-height: 44px;
+}
+
+/* Inline links inside copy are exempt — they are not standalone controls. */
+p a,
+li a,
+td a,
+.prose a {
+  min-height: 0;
+}
+
+/* 4. Horizontal padding is handled per-section by Tailwind's `px-4 sm:px-6
+   lg:px-10` (see the section elements themselves). A blanket rule here would
+   double up with those classes — the original px-6 plus this file's 1rem gave
+   40px of gutter at 375px and wasted 10% of the screen. */
+
+/* The proof-section code sample scrolls horizontally on a phone; a smaller
+   monospace size keeps more of each line visible before scrolling. */
+@media (max-width: 639px) {
+  .code-block {
+    font-size: 11.5px;
+    line-height: 1.7;
+  }
+}
+
+/* 5. Fixed header clearance: pt-28 (7rem) assumed a 4rem nav + breathing room.
+   On a phone that is dead space above the headline. */
+@media (max-width: 639px) {
+  main {
+    padding-top: 5.25rem;
+  }
+}
+
+/* 6. Card padding. p-7 (1.75rem) eats a 375px screen; phones get p-5. */
+@media (max-width: 639px) {
+  .card {
+    padding: 1.25rem;
+  }
+  .card.p-7,
+  .card.p-8 {
+    padding: 1.25rem;
+  }
+}
+
+/* 7. Nothing may exceed the viewport width. `overflow-x: hidden` on body
+   hides the symptom; this stops overflow at the source. */
+img,
+svg,
+video,
+canvas,
+table,
+pre,
+code {
+  max-width: 100%;
+}
+
+pre,
+code {
+  overflow-wrap: break-word;
+}
+
+/* 8. The receipt timeline and any long code block scroll horizontally
+   INSIDE their own box rather than pushing the page wide. */
+.overflow-x-auto,
+.code-block {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* 9. Scroll margin so anchor jumps clear the fixed header instead of hiding
+   the section title under it. */
+[id] {
+  scroll-margin-top: calc(var(--nav-h) + var(--safe-top) + 0.75rem);
+}
+
+/* 10. Focus ring: visible and consistent, the same on desktop and touch. */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* 11. Screen-reader-only utility (used by the nav toggle). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* 12. Reduced motion: Motion handles JS animations, but the CSS transitions
+   elsewhere (hover lifts, glow pulses) must also stop. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .ambient-glow,
+  .pulse-dot {
+    animation: none !important;
+  }
+}
+
+/* 13. Landscape phones (short viewport): collapse the oversized hero padding
+   so the terminal is usable without scrolling. */
+@media (max-height: 500px) and (orientation: landscape) {
+  main {
+    padding-top: 4.25rem;
+  }
+  section.py-24 {
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+  }
+}
+
+/* 14. Tap highlight: the default grey flash fights the palette. */
+button,
+a,
+[role="button"] {
+  -webkit-tap-highlight-color: rgba(232, 160, 78, 0.18);
+}
+
+/* 15. Prevent the iOS rubber-band from revealing the white body edge. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+/* 16. Minimum readable size on phones. 10px monospace micro-labels are a
+   desktop habit; on a 375px screen they are borderline illegible and iOS
+   Safari renders them inconsistently. Raise the floor to 11px. */
+.font-mono.text-\[10px\],
+.text-\[10px\].font-mono {
+  font-size: 11px;
+}
+
+/* 17. `xs` breakpoint (>=380px): phones in the 320–375px range are the tightest
+   layout target. Used only by the vault topbar for its mode chip label. */
+@media (min-width: 380px) {
+  .xs\:inline { display: inline; }
+}
+
+/* 17. Grid tracks must never exceed their container.
+   A CSS grid sizes its implicit single column to the items' min-content width.
+   When one item is an unbreakable block (a `<pre>`, a long address, a code
+   sample), that min-content width is enormous and the whole track blows past
+   the viewport — the page then scrolls sideways even though body has
+   `overflow-x: hidden`, which silently clips the far side of the content.
+   `min-w-0` on the items fixes most cases, but a grid whose tracks are still
+   resolved wider than its container needs the cap stated explicitly. */
+.grid {
+  min-width: 0;
+}
+
+/* Also guard flex rows: a flex item's default min-width:auto is the same trap. */
+.grid > *,
+.flex > * {
+  min-width: 0;
+}
+
+/* 18. Touch-target floor for the header and card-level controls.
+   Several inline controls (the logo link, the header icon buttons, the
+   "Copy Address" / "Request Challenge" links) render at 28–34px tall. They
+   pass visually but fall under the 44px minimum, which is the difference
+   between a tap and a mis-tap on a phone. Rather than editing every call
+   site, pad the ones whose intrinsic height comes from font-size alone.
+
+   NOTE: prose links (e.g. "trust budget" in a paragraph) are deliberately
+   exempt — expanding them to 44px would break the line's rhythm for no
+   usability gain, since the whole paragraph is already tappable context.
+*/
+header a[class*="flex items-center"],
+.card a.text-\[var\(--gold\)\],
+.btn-ghost,
+.status-tag {
+  min-height: 44px;
+}
+
+/* Header icon-only buttons need the width too, not just the height. */
+header button[aria-label] {
+  min-width: 44px;
+}
+
+/* Drop the rule for prose links, which must keep their inline metrics. */
+p a,
+.prose a {
+  min-height: 0;
+  min-width: 0;
 }
