@@ -4,6 +4,7 @@ import { env } from "@/lib/config/env";
 import { policy } from "@/lib/security/policy";
 import { redactSecret } from "@/lib/security/redact";
 import { isSyntheticTransition } from "@/lib/wallet/transition-builder";
+import crypto from "node:crypto";
 
 /**
  * Minimal reader surface the live adapter needs. `TachiHttpClient` satisfies it
@@ -113,13 +114,18 @@ export class LiveTachiAdapter implements TachiAdapter {
     }
     const result = await this.reader.broadcastTxSync(input.txHex);
     const record = result as Record<string, unknown>;
+    const inner = (record?.result && typeof record.result === "object" ? record.result : record) as Record<string, unknown>;
+    if (typeof inner?.code === "number" && inner.code !== 0) {
+      throw new Error(`Tachi mempool rejected transaction (code=${inner.code}): ${String(inner.log || "")}`);
+    }
     const hash =
-      typeof record?.hash === "string" && record.hash.length > 0
-        ? record.hash
-        : typeof record?.txid === "string" && record.txid.length > 0
-          ? record.txid
-          : undefined;
-    if (!hash) throw new Error("Tachi broadcast returned no transaction hash");
+      typeof inner?.hash === "string" && inner.hash.length > 0
+        ? inner.hash
+        : typeof inner?.txid === "string" && inner.txid.length > 0
+          ? inner.txid
+          : typeof record?.hash === "string" && record.hash.length > 0
+            ? record.hash
+            : crypto.createHash("sha256").update(Buffer.from(input.txHex, "hex")).digest("hex").toUpperCase();
     const suffix = input.proofDigest?.slice(0, 12) ?? "no-proof";
     return { transitionRef: `satvm:live:${input.action.toLowerCase()}:${hash}:${suffix}` };
   }

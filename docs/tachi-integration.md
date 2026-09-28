@@ -39,16 +39,139 @@ Drawbound distinguishes three transaction classes:
 
 ## Live write path (operator responsibilities)
 
-`LiveTachiAdapter` performs no key handling and creates no vault. The operator workflow is scripted in `scripts/operator-live.mts` (`derive` / `export-key` / `ownership` / `status` / `fund-help`); the full procedure:
+`LiveTachiAdapter` performs no key handling and creates no vault. The operator workflow is scripted in `scripts/operator-live.mts` (`derive` / `export-key` / `ownership` / `register` / `status` / `fund-help`).
 
-1. Run on `signet` or `regtest` with `LIVE_TACHI_ENABLED=true` and `KILL_SWITCH=false`.
-2. Derive the vault: `OPERATOR_MNEMONIC=... pnpm exec tsx scripts/operator-live.mts derive` (uses the live validator quorum; prints the vault P2TR and the BIP-322 ownership address for the same key). List the vault P2TR in `TACHI_VAULT_REF` and `ALLOWED_VAULT_REFS`.
-   - To *connect* the vault you need a BIP-322 ownership proof, which requires the 32-byte key as `OPERATOR_PRIVATE_KEY`. The aggregator never exposes private keys and `derive` will not print one, so export it explicitly: `OPERATOR_MNEMONIC=... pnpm exec tsx scripts/operator-live.mts export-key`. It must report the same `ownershipAddress` that `derive` printed.
-3. Fund it: a signet faucet, or `depositToVault({vault, userWallet, rpcClient})` from a funded P2WPKH aggregator wallet (SegWit funding is protocol-required). Verify with `status`.
-4. Build and sign the SatVM credit-transition transaction offline with `@tachibtc/taurus-wallet-aggregator` / `buildTachiTxTransfer` + `signTachiTx` + `encodeTachiTxBase64`, producing the encoded transaction.
-5. Submit it on the draw/repay/unlock request body (Advanced box in the terminal). Drawbound broadcasts it and records the returned hash; without it the transition fails closed (DENY receipt). Synthetic demo payloads (`dbdemo01` prefix) and non-transaction hex are rejected outright.
+### The two-deposit subtlety (critical)
 
-Drawbound has not created a vault, funded collateral, or broadcast any transaction. Those steps remain the operator's, using a disposable testnet vault.
+Tachi strictly distinguishes:
+1. **On-chain funding (L1)**: `depositToVault` spends Bitcoin from a P2WPKH wallet into the vault's P2TR address on Bitcoin (L1), creating a confirmed funding outpoint (`txid:vout`).
+2. **Ledger registration (Tachi)**: a `TxVaultOpen` (via `registerVault`) or `TxDeposit` registers that confirmed UTXO on the Tachi ledger, allocating a spendable `vtxoId`.
+
+> [!WARNING]
+> A credit transfer or transition referencing an unregistered vault fails immediately with **`vtxo not found`**. The on-chain deposit puts satoshis into the script, but Tachi consensus nodes will not recognise spendable VTXOs until the vault is registered on-ledger.
+
+### Step-by-step API Runbook (regtest first, then signet)
+
+#### Phase A — Wallet + Vault derivation
+Derive the vault P2TR address from the operator key using the live KDHT validator quorum:
+
+```typescript
+import { BitcoinCoreRpcClient, WalletAggregator, Keystore, getNetwork } from "@tachibtc/taurus-wallet-aggregator";
+import { createVault, verifyVaultP2tr } from "@tachibtc/taurus-vault-core";
+
+const rpc = new BitcoinCoreRpcClient({ url: "https://rpc-regtest.tachibtc.com/" });
+const aggregator = WalletAggregator.fromMnemonic(MNEMONIC, { network: "regtest", rpc });
+const userWallet = aggregator.addAccount({ addressType: "p2wpkh" });
+
+const vault = await createVault({
+  network: "regtest",
+  userWallet,
+  validators: { endpoint: "https://rpc-regtest.tachibtc.com/tachi_validators" },
+  // csvBlocks: 1008,
+});
+verifyVaultP2tr(vault.p2tr); // throws on derivation mismatch
+```
+*`scripts/operator-live.mts derive` automates this step.* List the resulting `vaultP2tr` in `TACHI_VAULT_REF` and `ALLOWED_VAULT_REFS`.
+
+#### Phase B — Fund (on-chain deposit)
+```typescript
+import { depositToVault } from "@tachibtc/taurus-vault-core";
+
+await userWallet.sync();
+const deposit = await depositToVault({
+  vault,
+  userWallet,
+  rpc,
+  amountSats: 100_000n,
+  feeRateSatVb: 2,
+});
+// deposit.txid — on-chain funding outpoint
+```
+
+> [!IMPORTANT]
+> **Funding source prerequisite**: `depositToVault` spends from the operator's SegWit P2WPKH wallet, so that address needs coins first:
+> - **Regtest**: use the regtest faucet (`regtest.tachibtcscan.com` / Discord) or mine blocks directly to your address (`bitcoin-cli -regtest -generate`).
+> - **Signet**: use a public signet faucet + the Tachi daemon RPC.
+
+#### Phase C — Ledger registration (TxVaultOpen)
+Register the confirmed L1 UTXO on the Tachi ledger so Tachi indexes the vault and mints spendable VTXO state:
+
+```typescript
+import { registerVault, type TaprootSigner } from "@tachibtc/taurus-vault-core";
+
+// Keystore produces the required TaprootSigner with Schnorr capabilities:
+const keystore = Keystore.fromMnemonic(MNEMONIC, "", getNetwork("regtest"), "p2wpkh", 0);
+const node = keystore.signerFor(false, 0);
+const userSigner: TaprootSigner = {
+  publicKey: Buffer.from(node.publicKey),
+  sign: (h) => Buffer.from(node.sign(h)),
+  signSchnorr: (h) => Buffer.from(node.signSchnorr!(h)),
+};
+
+const reg = await registerVault({
+  vault,
+  // Outpoint requires internal byte order:
+  outpoint: {
+    fundingTxid: Buffer.from(deposit.txid, "hex").reverse(),
+    fundingVout: 0,
+  },
+  userSigner,
+  inputs, // ledger VTXOs paying the (typically 0) open fee
+  outputs, // change VTXOs
+  feeSats: 0n,
+  broadcast: { url: `${DAEMON_URL}/tachi_txBroadcastSync` },
+  confirm: { baseUrl: DAEMON_URL },
+  name: "drawbound-collateral",
+});
+// reg.vaultIdHex — now discoverable on-chain and via discoverVaults({ ... })
+```
+*`scripts/operator-live.mts register` automates this step.*
+
+#### Phase D — Credit transition
+Now that the vault holds registered VTXOs, build and sign the VTXO PSBT transfer offline:
+
+```typescript
+import {
+  buildVtxoPsbt,
+  verifyVtxoPsbt,
+  signVtxoPsbtAsUser,
+  finalizeVtxoPsbt,
+  buildTachiTxTransfer,
+  signTachiTx,
+  encodeTachiTx,
+} from "@tachibtc/taurus-vault-core";
+
+const built = buildVtxoPsbt({
+  vault,
+  inputs: [{ txid: deposit.txid, vout: 0, valueSats: 100_000n, scriptPubKey: vault.p2tr.output.toString("hex") }],
+  outputs: [
+    { address: receiverAddr, valueSats: 40_000n },
+    { address: vault.p2tr.address, valueSats: 59_000n }, // change
+  ],
+  feeSats: 1_000n,
+});
+
+const verifyOptions = { maxFeeSats: 10_000n };
+verifyVtxoPsbt(built.psbt, vault, verifyOptions);
+await signVtxoPsbtAsUser(built.psbt, userSigner, vault, verifyOptions);
+finalizeVtxoPsbt(built.psbt, vault, verifyOptions);
+
+const draft = buildTachiTxTransfer({
+  vault,
+  inputs: built.inputs,
+  outputs: built.outputs,
+  feeSats: 1_000n,
+  nonce: 0n,
+  psbt: built.psbt,
+});
+const signed = await signTachiTx(draft, userSigner);
+const txHex = Buffer.from(encodeTachiTx(signed)).toString("hex");
+```
+
+Paste `txHex` into DrawBound's **Advanced** box in the Terminal UI (or supply it in `POST /api/credit/draw`).
+DrawBound's `LiveTachiAdapter.submitCreditTransition` broadcasts the transaction to `POST /tachi_txBroadcastSync`, records the real transaction hash, and returns the verified transition receipt.
+
+Drawbound has not created a vault, funded collateral, or broadcast any transaction autonomously. Those steps remain strictly operator-controlled.
 
 Run the read-only inventory with:
 

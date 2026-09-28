@@ -27,6 +27,8 @@ export const viewport: Viewport = {
   themeColor: "#07060a",
 };
 
+import Script from "next/script";
+
 export const metadata: Metadata = {
   title: "DrawBound: Native BTC credit that cannot outrun its proof",
   description: "Self-custodial native-BTC credit protocol. BTC collateral locked in TAURUS vaults, bounded by real-time HAT/RIP health proofs.",
@@ -39,6 +41,25 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${fraunces.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        <Script
+          id="extension-error-shield"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.addEventListener("error", function(e) {
+                if (
+                  (e.message && (e.message.includes("Cannot redefine property: ethereum") || e.message.includes("ethereum"))) ||
+                  (e.filename && e.filename.startsWith("chrome-extension://"))
+                ) {
+                  e.stopImmediatePropagation();
+                  e.preventDefault();
+                }
+              }, true);
+            `,
+          }}
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

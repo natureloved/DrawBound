@@ -261,7 +261,7 @@ export default function Home() {
 
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 nav-blur">
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5 group">
             <div className="relative w-7 h-7">
               <svg viewBox="0 0 28 28" className="w-7 h-7">
@@ -297,19 +297,19 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <a
               href="https://github.com/natureloved/DrawBound"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-ghost hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm"
+              className="btn-ghost hidden sm:inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.84 1.24 1.84 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.95 0-1.31.47-2.39 1.24-3.23-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.23 0 4.62-2.81 5.64-5.49 5.94.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.82.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
               </svg>
               GitHub
             </a>
-            <Link href="/vault" className="btn-primary btn-sm">
+            <Link href="/vault" className="btn-primary btn-sm px-3 sm:px-4 text-xs sm:text-sm">
               <span>Read the spec</span>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M13 5l7 7-7 7" />
@@ -317,7 +317,7 @@ export default function Home() {
             </Link>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 -mr-2 text-[var(--text-muted)]"
+              className="md:hidden p-2 -mr-2 text-[var(--text-muted)] hover:text-white transition-colors"
               aria-label="Toggle Menu"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -330,50 +330,60 @@ export default function Home() {
         </div>
 
         {mobileMenuOpen && (
-          <div className="mobile-menu open md:hidden absolute top-16 left-0 right-0 bg-[#09080c]/95 backdrop-blur-xl border-b border-[var(--border)] px-6 py-6 flex flex-col gap-4 text-[var(--text-muted)] shadow-2xl z-50">
-            <a href="#thesis" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-1">
-              Thesis
+          <div className="mobile-menu open md:hidden absolute top-16 left-0 right-0 bg-[#09080c]/98 backdrop-blur-xl border-b border-[var(--border)] px-6 py-6 flex flex-col gap-3 text-[var(--text-muted)] shadow-2xl z-50">
+            <a href="#thesis" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-2 border-b border-[var(--border-soft)] font-medium text-sm">
+              01 / Thesis
             </a>
-            <a href="#how" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-1">
-              Mechanism
+            <a href="#how" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-2 border-b border-[var(--border-soft)] font-medium text-sm">
+              02 / Mechanism
             </a>
-            <a href="#proof" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-1">
-              Proof
+            <a href="#proof" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-2 border-b border-[var(--border-soft)] font-medium text-sm">
+              03 / Proof
             </a>
-            <a href="#architecture" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-1">
-              Architecture
+            <a href="#architecture" onClick={() => setMobileMenuOpen(false)} className="hover:text-[var(--text)] py-2 border-b border-[var(--border-soft)] font-medium text-sm">
+              04 / Architecture
             </a>
-            <Link href="/vault" onClick={() => setMobileMenuOpen(false)} className="btn-primary btn-sm w-full mt-2">
-              <span>Launch Vault Terminal</span>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M13 5l7 7-7 7" />
-              </svg>
-            </Link>
+            <div className="pt-2 flex flex-col gap-3">
+              <Link href="/vault" onClick={() => setMobileMenuOpen(false)} className="btn-primary w-full py-3 rounded-lg text-sm text-center font-semibold">
+                <span>Launch Vault Terminal →</span>
+              </Link>
+              <a
+                href="https://github.com/natureloved/DrawBound"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-ghost w-full py-2.5 rounded-lg text-xs font-mono text-center flex items-center justify-center gap-2"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.84 1.24 1.84 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.95 0-1.31.47-2.39 1.24-3.23-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.92 1.24 3.23 0 4.62-2.81 5.64-5.49 5.94.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.82.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                </svg>
+                View on GitHub
+              </a>
+            </div>
           </div>
         )}
       </nav>
 
       {/* HERO */}
-      <section className="relative pt-32 pb-20 lg:pt-40 lg:pb-28 px-6 lg:px-10 overflow-hidden">
+      <section className="relative pt-28 pb-16 lg:pt-40 lg:pb-28 px-4 sm:px-6 lg:px-10 overflow-hidden">
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="grid lg:grid-cols-12 gap-10 lg:gap-8 items-center">
             {/* Left: Headline */}
             <div className="lg:col-span-7 reveal">
-              <div className="section-label mb-8">
+              <div className="section-label mb-6 sm:mb-8">
                 <span className="pulse-dot" />
                 Native BTC credit protocol
               </div>
 
               <h1
-                className="headline mb-7"
-                style={{ fontSize: "clamp(2.1rem, 7vw, 5.2rem)" }}
+                className="headline mb-6 sm:mb-7"
+                style={{ fontSize: "clamp(2rem, 6.5vw, 5.2rem)" }}
               >
                 Credit that <em>cannot</em>
                 <br />
                 outrun its proof.
               </h1>
 
-              <p className="text-base lg:text-lg text-[var(--text-muted)] max-w-xl leading-relaxed mb-8 font-light">
+              <p className="text-sm sm:text-base lg:text-lg text-[var(--text-muted)] max-w-xl leading-relaxed mb-8 font-light">
                 DrawBound issues credit against native Bitcoin with zero wrappers, zero bridges, and zero custodial trust. Every unit
                 drawn is bounded, in real time, by cryptographic proof of the collateral that backs it.
               </p>
@@ -389,18 +399,21 @@ export default function Home() {
 
               {/* Stats in a single horizontal line with dot dividers */}
               <div className="pt-4 border-t border-[var(--border-soft)]" style={{ marginTop: "20px" }}>
-                <div className="flex flex-wrap items-center gap-y-2 text-xs sm:text-sm font-mono text-[var(--text-muted)]">
-                  <span className="whitespace-nowrap">
-                    <strong className="font-semibold text-sm sm:text-base text-[var(--gold)]">100%</strong> Native BTC
-                  </span>
-                  <span className="text-[var(--border)] select-none px-4 sm:px-6">•</span>
-                  <span className="whitespace-nowrap">
-                    <strong className="font-semibold text-sm sm:text-base text-[var(--proof)]">0</strong> Custodians
-                  </span>
-                  <span className="text-[var(--border)] select-none px-4 sm:px-6">•</span>
-                  <span className="whitespace-nowrap">
-                    <strong className="font-semibold text-sm sm:text-base text-[var(--text)]">∞</strong> Proof-bounded
-                  </span>
+                <div className="grid grid-cols-3 gap-2 text-center sm:flex sm:flex-wrap sm:items-center sm:text-left text-xs sm:text-sm font-mono text-[var(--text-muted)]">
+                  <div className="whitespace-nowrap">
+                    <strong className="block sm:inline font-semibold text-sm sm:text-base text-[var(--gold)]">100%</strong>{" "}
+                    <span>Native BTC</span>
+                  </div>
+                  <span className="hidden sm:inline text-[var(--border)] select-none px-4 sm:px-6">•</span>
+                  <div className="whitespace-nowrap">
+                    <strong className="block sm:inline font-semibold text-sm sm:text-base text-[var(--proof)]">0</strong>{" "}
+                    <span>Custodians</span>
+                  </div>
+                  <span className="hidden sm:inline text-[var(--border)] select-none px-4 sm:px-6">•</span>
+                  <div className="whitespace-nowrap">
+                    <strong className="block sm:inline font-semibold text-sm sm:text-base text-[var(--text)]">∞</strong>{" "}
+                    <span>Proof-bounded</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -409,8 +422,8 @@ export default function Home() {
             <div className="lg:col-span-5 reveal" style={{ transitionDelay: "0.15s" }}>
               <div className="relative">
                 <div className="absolute -inset-4 bg-gradient-to-br from-[rgba(232,160,78,0.08)] to-[rgba(95,184,120,0.05)] rounded-3xl blur-2xl" />
-                <div className="relative card p-1.5 aspect-[4/5] min-h-[420px]">
-                  <div className="relative w-full h-full rounded-xl overflow-hidden bg-[#0c0a08] min-h-[400px]">
+                <div className="relative card p-1.5 aspect-[4/5] min-h-[340px] sm:min-h-[420px]">
+                  <div className="relative w-full h-full rounded-xl overflow-hidden bg-[#0c0a08] min-h-[320px] sm:min-h-[400px]">
                     <canvas ref={canvasRef} id="hero-viz" style={{ width: "100%", height: "100%", display: "block" }} />
                     <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-[var(--text-dim)]">
                       <span>Live · credit vs. proof</span>
@@ -466,7 +479,7 @@ export default function Home() {
       </section>
 
       {/* THESIS */}
-      <section id="thesis" className="relative py-24 lg:py-36 px-6 lg:px-10">
+      <section id="thesis" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-5xl mx-auto">
           <div className="reveal section-label mb-8">01 / Thesis</div>
           <div className="grid lg:grid-cols-12 gap-10">
@@ -538,7 +551,7 @@ export default function Home() {
       </section>
 
       {/* HOW IT WORKS */}
-      <section id="how" className="section-ash relative py-24 lg:py-36 px-6 lg:px-10">
+      <section id="how" className="section-ash relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl mb-16">
             <div className="reveal section-label mb-6">02 / Mechanism</div>
@@ -629,7 +642,7 @@ export default function Home() {
       </section>
 
       {/* PROOF MECHANISM */}
-      <section id="proof" className="relative py-24 lg:py-36 px-6 lg:px-10">
+      <section id="proof" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-start">
             <div className="lg:col-span-6">
@@ -760,7 +773,7 @@ export default function Home() {
       </section>
 
       {/* PROPERTIES */}
-      <section className="section-ash relative py-24 lg:py-36 px-6 lg:px-10">
+      <section className="section-ash relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl mb-16">
             <div className="reveal section-label mb-6">04 / Properties</div>
@@ -859,7 +872,7 @@ export default function Home() {
       </section>
 
       {/* ARCHITECTURE */}
-      <section id="architecture" className="relative py-20 lg:py-28 px-6 lg:px-10 scroll-mt-20">
+      <section id="architecture" className="relative py-16 sm:py-20 lg:py-28 px-4 sm:px-6 lg:px-10 scroll-mt-20">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl mb-12">
             <div className="reveal section-label mb-6">05 / Architecture</div>
@@ -875,7 +888,7 @@ export default function Home() {
           </div>
 
           <div className="reveal relative">
-            <div className="card p-6 sm:p-8 lg:p-10">
+            <div className="card p-4 sm:p-8 lg:p-10">
               <div className="flex flex-col lg:flex-row items-center justify-between gap-4 lg:gap-6">
                 {/* L1 */}
                 <div className="arch-node w-full lg:flex-1 text-center lg:text-left">
@@ -993,7 +1006,7 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section id="cta" className="relative py-24 lg:py-36 px-6 lg:px-10 overflow-hidden scroll-mt-20">
+      <section id="cta" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10 overflow-hidden scroll-mt-20">
         <div
           className="ambient-glow"
           style={{
@@ -1033,7 +1046,7 @@ export default function Home() {
       </section>
 
       {/* FOOTER */}
-      <footer className="border-t border-[var(--border-soft)] py-12 px-6 lg:px-10 bg-[var(--bg-2)]">
+      <footer className="border-t border-[var(--border-soft)] py-10 sm:py-12 px-4 sm:px-6 lg:px-10 bg-[var(--bg-2)]">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-6">
           <div className="flex flex-wrap items-center gap-3 text-center sm:text-left justify-center sm:justify-start">
             <Link href="/" className="flex items-center gap-2.5">

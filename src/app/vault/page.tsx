@@ -74,6 +74,7 @@ export default function VaultPage() {
   const [customTxHex, setCustomTxHex] = useState("");
   const [refreshingProof, setRefreshingProof] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [showOwnershipProof, setShowOwnershipProof] = useState(false);
   const [nowMs, setNowMs] = useState(0);
 
   const isLive = adapterMode === "live";
@@ -416,13 +417,13 @@ export default function VaultPage() {
 
       {/* Topbar */}
       <header className="fixed top-0 left-0 right-0 z-50 nav-blur">
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="relative w-7 h-7">
-              <svg viewBox="0 0 28 28" className="w-7 h-7">
-                <rect x="2" y="2" width="24" height="24" rx="6" fill="none" stroke="url(#logoGradVault)" strokeWidth="1.5" />
-                <path d="M8 18 Q14 8 20 14 Q14 20 8 12" fill="none" stroke="#e8a04e" strokeWidth="1.5" strokeLinecap="round" />
-                <path d="M8 14 Q14 20 20 10" fill="none" stroke="#5fb878" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 2" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between gap-3">
+          <Link href="/" className="flex items-center gap-2.5 sm:gap-3 group shrink-0">
+            <div className="vault-logo-glow w-7 h-7 sm:w-8 sm:h-8 shrink-0">
+              <svg viewBox="0 0 28 28" className="w-7 h-7 sm:w-8 sm:h-8">
+                <rect x="2" y="2" width="24" height="24" rx="7" fill="rgba(16,14,12,0.8)" stroke="url(#logoGradVault)" strokeWidth="1.5" />
+                <path d="M8 18 Q14 8 20 14 Q14 20 8 12" fill="none" stroke="#e8a04e" strokeWidth="1.75" strokeLinecap="round" />
+                <path d="M8 14 Q14 20 20 10" fill="none" stroke="#5fb878" strokeWidth="1.75" strokeLinecap="round" strokeDasharray="2 2" />
                 <defs>
                   <linearGradient id="logoGradVault" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0" stopColor="#e8a04e" />
@@ -431,57 +432,149 @@ export default function VaultPage() {
                 </defs>
               </svg>
             </div>
-            <span className="font-display text-lg font-medium tracking-tight">DrawBound</span>
-            <span className="text-[10px] font-mono text-[var(--gold)] border border-[var(--border)] px-2 py-0.5 rounded ml-1">
-              VAULT
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-display text-lg sm:text-xl font-medium tracking-tight text-white group-hover:text-gold transition-colors">
+                DrawBound
+              </span>
+              <span className="vault-badge text-3xs px-1.5 py-0.5 sm:px-2">
+                <span className="hidden sm:inline">VAULT TERMINAL</span>
+                <span className="sm:hidden">VAULT</span>
+              </span>
+            </div>
           </Link>
 
-          <div className="flex items-center gap-3">
-            <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-mono text-[var(--text-muted)] border border-[var(--border)] px-3 py-1.5 rounded-lg bg-[var(--surface)]">
-              <span className="pulse-dot" /> SIGNET · {isLive ? "LIVE" : "FIXTURE"}
-            </span>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="hidden md:inline-flex items-center gap-2 text-xs font-mono text-muted border border-soft px-3 py-1.5 rounded-lg bg-surface">
+              <span className="pulse-dot" />
+              <span>SIGNET · <strong className={isLive ? "text-proof" : "text-gold"}>{isLive ? "LIVE" : "FIXTURE"}</strong></span>
+            </div>
             <button
               onClick={refreshLiveProof}
               disabled={refreshingProof || busy || !session}
-              className="btn-ghost px-3 py-1.5 rounded-lg text-xs font-mono"
+              className="btn-ghost px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-mono whitespace-nowrap"
+              title="Query Tachi signet or external HAT oracle for fresh loan-health attestation"
             >
-              {refreshingProof ? "Refreshing..." : "↻ Refresh Oracle"}
+              <span className="hidden sm:inline">{refreshingProof ? "Refreshing..." : "↻ Refresh Oracle"}</span>
+              <span className="sm:hidden">{refreshingProof ? "…" : "↻ Oracle"}</span>
             </button>
-            <Link href="/" className="btn-ghost px-3.5 py-1.5 rounded-lg text-xs font-mono">
-              ← Back to Overview
+            <Link href="/" className="btn-ghost px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-mono whitespace-nowrap">
+              ← Overview
             </Link>
           </div>
         </div>
       </header>
 
       {/* Main Terminal Shell */}
-      <main className="pt-28 pb-20 px-6 lg:px-10 max-w-7xl mx-auto relative z-10">
-        {/* Header Row */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 pb-6 border-b border-[var(--border-soft)]">
+      <main className="pt-24 sm:pt-28 pb-16 sm:pb-20 px-4 sm:px-6 lg:px-10 max-w-7xl mx-auto relative z-10">
+        {/* Header / Hero Row */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 sm:mb-8 pb-5 sm:pb-6 border-b border-soft gap-5 sm:gap-6">
           <div>
-            <div className="section-label mb-3">
+            <div className="section-label mb-2 sm:mb-3">
               <span className="pulse-dot" />
-              Live Self-Custodial Vault Terminal
+              Tachi SatVM // Non-Custodial BTC Credit Suite
             </div>
-            <h1 className="headline text-[clamp(2.2rem,4vw,3.4rem)]">
+            <h1 className="headline text-2xl sm:text-4xl lg:text-5xl font-light mb-2.5 sm:mb-3">
               Taurus Credit <em>Terminal</em>
             </h1>
-            <p className="text-sm text-[var(--text-muted)] font-light mt-2 max-w-xl">
-              Lock native BTC in non-custodial Taurus Taproot vaults and authorize proof-causal SatVM credit transitions.
+            <p className="text-xs sm:text-base text-muted font-light max-w-2xl leading-relaxed">
+              Lock native Bitcoin in non-custodial Taurus Taproot vaults and authorize real-time proof-bounded SatVM credit transitions.
             </p>
           </div>
-          {session && (
-            <div className="mt-4 md:mt-0 text-right">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Session Identity</div>
-              <div className="text-xs font-mono text-[var(--gold)] mt-0.5">
-                {session.vaultRef.slice(0, 14)}…{session.vaultRef.slice(-8)}
+
+          {/* Session Indicator Card */}
+          <div className="card p-4 w-full md:w-auto md:min-w-[280px] md:text-right shrink-0 bg-surface border border-soft">
+            <div className="flex items-center md:justify-end gap-2 mb-1.5">
+              <span className={`status-tag ${session ? "online" : "idle"}`}>
+                {session ? "● SESSION ACTIVE" : "○ SESSION IDLE"}
+              </span>
+            </div>
+            {session ? (
+              <div>
+                <div className="flex items-center md:justify-end gap-2">
+                  <span className="text-xs font-mono text-gold font-semibold break-all">
+                    {session.vaultRef.slice(0, 12)}…{session.vaultRef.slice(-8)}
+                  </span>
+                  <button
+                    onClick={() => copyToClipboard(session.vaultRef, "vault-header")}
+                    className="text-xs font-mono text-muted hover:text-gold transition-colors p-1"
+                    title="Copy connected vault address"
+                  >
+                    {copiedKey === "vault-header" ? "✓" : "⎘"}
+                  </button>
+                </div>
+                <div className="text-3xs font-mono text-dim mt-1">
+                  BIP-340 Schnorr session · Ephemeral tab key
+                </div>
               </div>
-              <div className="text-[10px] font-mono text-[var(--text-dim)] mt-0.5">
-                Schnorr session · key held on device
+            ) : (
+              <div>
+                <div className="text-xs font-mono text-muted font-medium">
+                  Wallet Disconnected
+                </div>
+                <div className="text-3xs font-mono text-dim mt-1">
+                  Connect below to open self-custodial session
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* The Protocol Banner */}
+        <div className="vault-banner mb-6 sm:mb-8">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-5">
+            <div className="flex items-start gap-3 sm:gap-4">
+              <div
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
+                style={{
+                  background: isLive ? "rgba(95, 184, 120, 0.15)" : "rgba(232, 160, 78, 0.15)",
+                  border: `1px solid ${isLive ? "rgba(95, 184, 120, 0.35)" : "rgba(232, 160, 78, 0.35)"}`,
+                }}
+              >
+                {isLive ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5fb878" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e8a04e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="6" x2="12" y2="12" />
+                    <line x1="12" y1="12" x2="16" y2="14" />
+                  </svg>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="font-mono text-xs font-bold uppercase tracking-wider" style={{ color: isLive ? "var(--proof)" : "var(--gold)" }}>
+                    {isLive ? "Live Tachi Signet Protocol Active" : "Fixture Rehearsal Simulation Active"}
+                  </span>
+                  <span className="banner-chip text-3xs py-0.5 px-2">
+                    {isLive ? "ON-CHAIN BROADCASTS" : "DETERMINISTIC SANDBOX"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted font-light leading-relaxed max-w-3xl">
+                  {isLive
+                    ? "Operating directly against Tachi Bitcoin Signet RPC at rpc-signet.tachibtc.com. Live credit transitions require a valid Taurus-signed txHex and verified loan-health attestations before broadcast."
+                    : "Zero testnet coins required. Client-side BIP-340 Schnorr signatures are verified against real covenant invariants. Exceeding your borrowing limit triggers real covenant freeze & deny receipts."}
+                </p>
               </div>
             </div>
-          )}
+
+            {/* Banner Stat Chips */}
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 shrink-0 pt-3 lg:pt-0 border-t border-[rgba(255,255,255,0.06)] lg:border-t-0">
+              <span className="banner-chip proof justify-center sm:justify-start">
+                <span>Covenant:</span> <strong>≥125% Health</strong>
+              </span>
+              <span className="banner-chip accent justify-center sm:justify-start">
+                <span>Ratio:</span> <strong>10 Sats/Unit</strong>
+              </span>
+              <span className="banner-chip justify-center sm:justify-start">
+                <span>Auth:</span> <strong>BIP-340 Schnorr</strong>
+              </span>
+              <span className="banner-chip justify-center sm:justify-start">
+                <span>Replay:</span> <strong>Nonces Enforced</strong>
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Notices */}
@@ -489,25 +582,25 @@ export default function VaultPage() {
           <div
             className={`p-4 rounded-xl mb-8 flex items-center gap-3 text-sm font-mono border ${
               notice.tone === "allow"
-                ? "bg-[rgba(95,184,120,0.1)] border-[var(--proof)] text-[var(--proof-soft)]"
+                ? "bg-[rgba(95,184,120,0.1)] border-[var(--proof)] text-proof-soft"
                 : notice.tone === "deny"
-                  ? "bg-[rgba(226,109,105,0.1)] border-[var(--danger)] text-[var(--danger-soft)]"
-                  : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)]"
+                  ? "bg-[rgba(226,109,105,0.1)] border-[var(--danger)] text-danger-soft"
+                  : "bg-surface border-default text-white"
             }`}
           >
-            <span>{notice.tone === "allow" ? "✓" : notice.tone === "deny" ? "✕" : "ℹ"}</span>
-            <strong>{notice.text}</strong>
+            <span className="text-lg">{notice.tone === "allow" ? "✓" : notice.tone === "deny" ? "✕" : "ℹ"}</span>
+            <strong className="leading-relaxed">{notice.text}</strong>
           </div>
         )}
 
-        {/* 2-Column Grid */}
-        <div className="grid lg:grid-cols-12 gap-6">
-          {/* Column 1: Vault & Collateral Position */}
+        {/* 2-Column Grid with balanced layout */}
+        <div className="grid lg:grid-cols-12 gap-8 items-start">
+          {/* Column 1: Vault & Collateral Position (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
             {/* Vault Connection Card */}
             <div className="card p-7">
               <div className="flex items-center justify-between mb-5">
-                <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">
+                <div className="text-xs font-mono uppercase tracking-widest text-dim">
                   TAURUS VAULT / WALLET
                 </div>
                 <span className={`status-tag ${session ? "online" : "idle"}`}>
@@ -518,29 +611,29 @@ export default function VaultPage() {
               {session ? (
                 <div className="space-y-4">
                   <div>
-                    <div className="flex justify-between items-center text-xs text-[var(--text-muted)] mb-2 font-mono">
+                    <div className="flex justify-between items-center text-xs text-muted mb-2 font-mono">
                       <span>Connected Taurus Vault</span>
                       <button
                         onClick={() => copyToClipboard(session.vaultRef, "vault")}
-                        className="text-[var(--gold)] hover:text-[var(--gold-soft)] text-xs font-mono transition-colors"
+                        className="text-gold hover:text-gold-soft text-xs font-mono transition-colors"
                       >
                         {copiedKey === "vault" ? "Copied ✓" : "Copy Address"}
                       </button>
                     </div>
-                    <code className="text-xs font-mono text-[var(--gold)] break-all block bg-[#090807] p-3.5 rounded-lg border border-[var(--border)] leading-relaxed">
+                    <code className="text-xs font-mono text-gold break-all block bg-well p-3.5 rounded-lg border border-soft leading-relaxed">
                       {session.vaultRef}
                     </code>
                   </div>
                   <div>
-                    <div className="text-xs text-[var(--text-muted)] mb-2 font-mono">Session public key</div>
-                    <code className="text-[10px] font-mono text-[var(--text-dim)] break-all block bg-[#090807] p-3 rounded-lg border border-[var(--border-soft)]">
+                    <div className="text-xs text-muted mb-2 font-mono">Session Public Key (Schnorr)</div>
+                    <code className="text-3xs font-mono text-dim break-all block bg-well p-3 rounded-lg border border-soft">
                       {session.publicKey}
                     </code>
                   </div>
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <span className="text-[var(--text-muted)]">Vault ownership (BIP-322)</span>
-                    <strong className={ownershipVerified ? "text-[var(--proof)]" : "text-[var(--text-dim)]"}>
-                      {ownershipVerified ? "✓ VERIFIED" : "unproven"}
+                  <div className="flex items-center justify-between text-xs font-mono p-3 bg-well rounded-lg border border-soft">
+                    <span className="text-muted">Vault Ownership (BIP-322)</span>
+                    <strong className={ownershipVerified ? "text-proof" : "text-dim"}>
+                      {ownershipVerified ? "✓ VERIFIED ON-CHAIN" : "UNPROVEN (FIXTURE)"}
                     </strong>
                   </div>
                   <button onClick={disconnect} className="btn-ghost w-full py-2.5 rounded-lg text-xs font-mono">
@@ -550,12 +643,12 @@ export default function VaultPage() {
               ) : (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <label className="block text-xs font-mono text-[var(--text-muted)]">
+                    <label className="block text-xs font-mono text-muted">
                       Taurus Vault Reference (P2TR)
                     </label>
                     <button
                       onClick={() => setVaultInput(DEMO_VAULT)}
-                      className="text-[var(--gold)] hover:text-[var(--gold-soft)] text-xs font-mono border border-[var(--border)] px-2 py-0.5 rounded bg-[var(--surface-2)] transition-colors"
+                      className="text-gold hover:text-gold-soft text-xs font-mono border border-default px-2.5 py-1 rounded bg-surface-2 transition-colors"
                     >
                       Use Demo Vault
                     </button>
@@ -577,60 +670,71 @@ export default function VaultPage() {
                       void connect(vaultInput, nonce && addr && sig ? { nonce, ownershipAddress: addr, ownershipSignature: sig } : undefined);
                     }}
                     disabled={connecting || !vaultInput.trim()}
-                    className="btn-primary w-full py-3 rounded-lg text-xs font-mono"
+                    className="btn-primary w-full py-3.5 rounded-lg text-xs font-mono"
                   >
                     {connecting ? "Reading On-Chain VTXOs..." : "Connect Vault →"}
                   </button>
-                  {connectError && <p className="text-xs font-mono text-[var(--danger)]">{connectError}</p>}
-                  <p className="text-[10px] font-mono text-[var(--text-dim)] leading-relaxed">
+                  {connectError && <p className="text-xs font-mono text-danger">{connectError}</p>}
+                  <p className="text-3xs font-mono text-dim leading-relaxed">
                     Connecting generates an ephemeral Schnorr keypair on this device. Every transition you authorize is
                     signed with it; the private key never leaves your browser.
                   </p>
 
-                  {/* Optional BIP-322 ownership proof */}
-                  <div className="pt-4 border-t border-[var(--border-soft)] space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-mono text-[var(--text-muted)]">
-                        Ownership proof (BIP-322) <span className="text-[var(--text-dim)]">· optional</span>
-                      </span>
-                      <button
-                        onClick={() => void requestOwnershipChallenge()}
-                        disabled={!vaultInput.trim()}
-                        className="text-[var(--gold)] hover:text-[var(--gold-soft)] text-xs font-mono border border-[var(--border)] px-2 py-0.5 rounded bg-[var(--surface-2)] transition-colors"
-                      >
-                        Request Challenge
-                      </button>
-                    </div>
-                    {ownershipChallenge && (
-                      <div>
-                        <div className="flex justify-between items-center text-[10px] font-mono text-[var(--text-dim)] mb-1">
-                          <span>Sign this message with the vault user key:</span>
+                  {/* Optional BIP-322 ownership proof accordion */}
+                  <div className="pt-4 border-t border-soft">
+                    <button
+                      type="button"
+                      onClick={() => setShowOwnershipProof(!showOwnershipProof)}
+                      className="flex items-center justify-between w-full text-xs font-mono text-muted hover:text-gold transition-colors py-1"
+                    >
+                      <span>BIP-322 Ownership Proof <span className="text-dim">· optional</span></span>
+                      <span className="text-xs">{showOwnershipProof ? "▲ Hide" : "▼ Expand"}</span>
+                    </button>
+
+                    {showOwnershipProof && (
+                      <div className="space-y-3 mt-3 pt-3 border-t border-soft">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-mono text-dim">Challenge Nonce:</span>
                           <button
-                            onClick={() => copyToClipboard(ownershipChallenge.challenge, "challenge")}
-                            className="text-[var(--gold)] hover:text-[var(--gold-soft)]"
+                            onClick={() => void requestOwnershipChallenge()}
+                            disabled={!vaultInput.trim()}
+                            className="text-gold hover:text-gold-soft text-xs font-mono border border-default px-2.5 py-1 rounded bg-surface-2 transition-colors"
                           >
-                            {copiedKey === "challenge" ? "Copied ✓" : "Copy"}
+                            Request Challenge
                           </button>
                         </div>
-                        <code className="text-[10px] font-mono text-[var(--text)] break-all block bg-[#090807] p-3 rounded-lg border border-[var(--border-soft)]">
-                          {ownershipChallenge.challenge}
-                        </code>
+                        {ownershipChallenge && (
+                          <div>
+                            <div className="flex justify-between items-center text-3xs font-mono text-dim mb-1">
+                              <span>Sign this message with the vault user key:</span>
+                              <button
+                                onClick={() => copyToClipboard(ownershipChallenge.challenge, "challenge")}
+                                className="text-gold hover:text-gold-soft"
+                              >
+                                {copiedKey === "challenge" ? "Copied ✓" : "Copy"}
+                              </button>
+                            </div>
+                            <code className="text-3xs font-mono text-white break-all block bg-well p-3 rounded-lg border border-soft">
+                              {ownershipChallenge.challenge}
+                            </code>
+                          </div>
+                        )}
+                        <input
+                          className="vault-input"
+                          value={ownershipAddress}
+                          onChange={(e) => setOwnershipAddress(e.target.value)}
+                          placeholder="Ownership address (key-path P2TR of the vault user key)"
+                          spellCheck={false}
+                        />
+                        <textarea
+                          className="vault-input min-h-[56px] resize-y"
+                          value={ownershipSignature}
+                          onChange={(e) => setOwnershipSignature(e.target.value)}
+                          placeholder="BIP-322 signature (base64) — see scripts/operator-live.mts ownership"
+                          spellCheck={false}
+                        />
                       </div>
                     )}
-                    <input
-                      className="vault-input"
-                      value={ownershipAddress}
-                      onChange={(e) => setOwnershipAddress(e.target.value)}
-                      placeholder="Ownership address (key-path P2TR of the vault user key)"
-                      spellCheck={false}
-                    />
-                    <textarea
-                      className="vault-input min-h-[56px] resize-y"
-                      value={ownershipSignature}
-                      onChange={(e) => setOwnershipSignature(e.target.value)}
-                      placeholder="BIP-322 signature (base64) — see scripts/operator-live.mts ownership"
-                      spellCheck={false}
-                    />
                   </div>
                 </div>
               )}
@@ -638,51 +742,51 @@ export default function VaultPage() {
 
             {/* Collateral Metrics Card */}
             <div className="card p-7">
-              <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)] mb-5">
+              <div className="text-xs font-mono uppercase tracking-widest text-dim mb-5">
                 Collateral & Debt Position
               </div>
-              <div className="grid grid-cols-2 gap-4 mb-5">
-                <div className="p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)]">
-                  <div className="text-xs font-mono text-[var(--text-dim)]">Locked Collateral</div>
-                  <div className="font-display text-2xl font-light text-[var(--gold)] mt-1.5">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-5">
+                <div className="metric-tile p-3 sm:p-4">
+                  <div className="text-xs font-mono text-dim">Locked Collateral</div>
+                  <div className="font-display text-lg sm:text-2xl font-light text-gold mt-1 sm:mt-1.5 truncate">
                     {position?.collateralSats.toLocaleString() ?? "0"}{" "}
-                    <span className="text-xs font-mono text-[var(--text-muted)]">sats</span>
+                    <span className="text-3xs sm:text-xs font-mono text-muted">sats</span>
                   </div>
                 </div>
-                <div className="p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)]">
-                  <div className="text-xs font-mono text-[var(--text-dim)]">Debt Drawn</div>
-                  <div className="font-display text-2xl font-light text-[var(--proof)] mt-1.5">
+                <div className="metric-tile p-3 sm:p-4">
+                  <div className="text-xs font-mono text-dim">Debt Drawn</div>
+                  <div className="font-display text-lg sm:text-2xl font-light text-proof mt-1 sm:mt-1.5 truncate">
                     {position?.debtUnits ?? 0}{" "}
-                    <span className="text-xs font-mono text-[var(--text-muted)]">units</span>
+                    <span className="text-3xs sm:text-xs font-mono text-muted">units</span>
                   </div>
                 </div>
               </div>
               <div className="mb-5">
-                <div className="flex justify-between text-xs font-mono text-[var(--text-muted)] mb-2">
+                <div className="flex justify-between text-xs font-mono text-muted mb-2">
                   <span>Credit Utilization</span>
-                  <span className="text-[var(--text)] font-medium">{progress.toFixed(0)}%</span>
+                  <span className="text-white font-medium">{progress.toFixed(0)}%</span>
                 </div>
                 <div className="progress-track">
                   <div className="progress-fill" style={{ width: `${progress}%` }} />
                 </div>
               </div>
-              <div className="flex justify-between items-center text-xs font-mono text-[var(--text-muted)] border-t border-[var(--border-soft)] pt-4">
+              <div className="flex justify-between items-center text-xs font-mono text-muted border-t border-soft pt-4">
                 <span>
-                  Credit Cap: <strong className="text-[var(--text)]">{position?.creditLimitUnits ?? 0} units</strong>
+                  Credit Cap: <strong className="text-white">{position?.creditLimitUnits ?? 0} units</strong>
                 </span>
                 <span>
-                  Exit Status: <strong className="text-[var(--gold)]">{position?.exitStatus ?? "LOCKED"}</strong>
+                  Exit Status: <strong className="text-gold">{position?.exitStatus ?? "LOCKED"}</strong>
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Column 2: Covenant Gate & Action Terminal */}
+          {/* Column 2: Covenant Gate & Action Terminal (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
             {/* Draw / Repay / Unlock Gate */}
             <div className="card p-7">
               <div className="flex items-center justify-between mb-5">
-                <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">
+                <div className="text-xs font-mono uppercase tracking-widest text-dim">
                   Covenant Credit Gate
                 </div>
                 <span className={`status-tag ${proofStatus === "HEALTHY" ? "healthy" : "blocked"}`}>
@@ -692,7 +796,7 @@ export default function VaultPage() {
 
               <div className="grid md:grid-cols-2 gap-5 mb-6">
                 <div>
-                  <label className="block text-xs font-mono text-[var(--text-muted)] mb-2">
+                  <label className="block text-xs font-mono text-muted mb-2">
                     Draw Amount (Credit Units)
                   </label>
                   <div className="amount-input">
@@ -703,46 +807,58 @@ export default function VaultPage() {
                     />
                     <span>UNITS</span>
                   </div>
-                  <div className="flex gap-2 mt-2.5">
+                  <div className="grid grid-cols-4 sm:flex gap-2 mt-2.5">
                     {[50, 100, 250].map((val) => (
                       <button
                         key={val}
                         onClick={() => setAmount(String(val))}
-                        className="btn-ghost px-3 py-1 rounded-md text-xs font-mono"
+                        className="btn-ghost py-2 sm:px-3 sm:py-1 rounded-md text-xs font-mono text-center"
                       >
                         {val}
                       </button>
                     ))}
+                    <button
+                      onClick={() => {
+                        if (position) {
+                          const maxAvailable = Math.max(0, position.creditLimitUnits - position.debtUnits);
+                          setAmount(String(maxAvailable));
+                        }
+                      }}
+                      className="btn-ghost py-2 sm:px-3 sm:py-1 rounded-md text-xs font-mono text-gold text-center"
+                      title="Set to max available credit before exceeding cap"
+                    >
+                      Max
+                    </button>
                   </div>
                 </div>
 
-                <div className="space-y-3 bg-[#090807] p-4 rounded-xl border border-[var(--border-soft)] flex flex-col justify-center">
+                <div className="space-y-3 bg-well p-4 rounded-xl border border-soft flex flex-col justify-center">
                   <div className="flex justify-between items-center text-xs font-mono">
-                    <span className="text-[var(--text-muted)]">Attested Health:</span>
-                    <strong className="text-[var(--proof)]">{formatHealth(proof?.healthBps)}</strong>
+                    <span className="text-muted">Attested Health:</span>
+                    <strong className="text-proof">{formatHealth(proof?.healthBps)}</strong>
                   </div>
                   <div className="flex justify-between items-center text-xs font-mono">
-                    <span className="text-[var(--text-muted)]">Required Min:</span>
-                    <strong className="text-[var(--text)]">{formatHealth(position?.minHealthBps)}</strong>
+                    <span className="text-muted">Required Min:</span>
+                    <strong className="text-white">{formatHealth(position?.minHealthBps)}</strong>
                   </div>
                   <div className="flex justify-between items-center text-xs font-mono">
-                    <span className="text-[var(--text-muted)]">Proof Expires:</span>
-                    <strong className={!isFresh ? "text-[var(--danger)]" : "text-[var(--text-dim)]"}>
-                      {formatDate(proof?.expiresAt)}
+                    <span className="text-muted">Proof Status:</span>
+                    <strong className={!isFresh ? "text-danger" : "text-proof"}>
+                      {isFresh ? "● FRESH" : "✕ EXPIRED"} ({formatDate(proof?.expiresAt)})
                     </strong>
                   </div>
                   <div className="flex justify-between items-center text-xs font-mono">
-                    <span className="text-[var(--text-muted)]">Proof Source:</span>
-                    <strong className="text-[var(--text-dim)]">{proof?.source ?? "—"}</strong>
+                    <span className="text-muted">Proof Source:</span>
+                    <strong className="text-dim uppercase">{proof?.source ?? "—"}</strong>
                   </div>
                 </div>
               </div>
 
               {/* Advanced: operator-signed transaction for LIVE mode */}
-              <div className="mb-5 p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)]">
+              <div className="mb-5 p-4 bg-well rounded-xl border border-soft">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-mono text-[var(--text-muted)]">
-                    Advanced · Taurus-signed txHex {isLive && <strong className="text-[var(--danger)]">(required in LIVE mode)</strong>}
+                  <span className="text-xs font-mono text-muted">
+                    Advanced · Taurus-signed txHex {isLive && <strong className="text-danger">(required in LIVE mode)</strong>}
                   </span>
                 </div>
                 <textarea
@@ -764,7 +880,7 @@ export default function VaultPage() {
                   disabled={busy || !session || !position || !amount || Number(amount) <= 0}
                   className="btn-primary w-full py-3.5 rounded-lg text-xs font-mono text-center font-semibold"
                 >
-                  {busy ? "Authorizing..." : "Authorize Draw →"}
+                  {busy ? "Authorizing Transition..." : "Authorize Draw →"}
                 </button>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -783,8 +899,8 @@ export default function VaultPage() {
                   </button>
                 </div>
                 {!session && (
-                  <p className="text-[10px] font-mono text-[var(--text-dim)] text-center">
-                    Connect a vault to enable signed transitions.
+                  <p className="text-3xs font-mono text-dim text-center">
+                    Connect a vault above to enable signed transitions.
                   </p>
                 )}
               </div>
@@ -793,31 +909,31 @@ export default function VaultPage() {
             {/* Decision Audit Timeline */}
             <div className="card p-7">
               <div className="flex items-center justify-between mb-4">
-                <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">
+                <div className="text-xs font-mono uppercase tracking-widest text-dim">
                   Independent Decision Receipts
                 </div>
-                <span className="font-mono text-xs text-[var(--text-muted)]">{receipts.length} events</span>
+                <span className="font-mono text-xs text-muted">{receipts.length} events</span>
               </div>
 
               {receipts.length === 0 ? (
-                <div className="p-8 text-center text-xs font-mono text-[var(--text-dim)] border border-dashed border-[var(--border)] rounded-xl">
-                  No credit transitions yet. The next draw will leave an immutable cryptographic receipt here.
+                <div className="p-8 text-center text-xs font-mono text-dim border border-dashed border-default rounded-xl">
+                  No credit transitions yet. The next draw will record an immutable cryptographic receipt here.
                 </div>
               ) : (
-                <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
-                  {receipts.slice(0, 8).map((r) => (
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                  {receipts.slice(0, 8).map((r, index) => (
                     <div
-                      key={r.id}
-                      className="p-3.5 bg-[#090807] rounded-lg border border-[var(--border-soft)] text-xs font-mono flex items-center justify-between"
+                      key={`${r.id}-${r.createdAt ?? index}`}
+                      className="audit-receipt-item flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 sm:gap-3"
                     >
                       <div>
-                        <span className="font-bold text-[var(--gold)] mr-2">{r.action}</span>
-                        <span className={r.result === "ALLOW" ? "text-[var(--proof)]" : "text-[var(--danger)]"}>
+                        <span className="font-bold text-gold mr-2">{r.action}</span>
+                        <span className={r.result === "ALLOW" ? "text-proof font-bold" : "text-danger font-bold"}>
                           [{r.result}]
                         </span>
-                        <span className="text-[var(--text-dim)] ml-2">{r.reason}</span>
+                        <span className="text-dim ml-2">{r.reason}</span>
                       </div>
-                      <time className="text-[var(--text-dim)] text-[10px]">{formatDate(r.createdAt)}</time>
+                      <time className="text-dim text-3xs shrink-0 self-end sm:self-auto">{formatDate(r.createdAt)}</time>
                     </div>
                   ))}
                 </div>
@@ -827,20 +943,20 @@ export default function VaultPage() {
         </div>
 
         {/* Network Diagnostics Bar */}
-        <div className="mt-8 p-6 card flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="mt-8 p-4 sm:p-6 card flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="pulse-dot" />
+            <span className="pulse-dot shrink-0" />
             <div className="font-mono text-xs">
-              <span className="text-[var(--text-muted)]">Tachi Node Diagnostics: </span>
-              <strong className="text-[var(--text)]">
+              <span className="text-muted">Tachi Node Diagnostics: </span>
+              <strong className="text-white block sm:inline mt-1 sm:mt-0">
                 {tachiSnapshot
                   ? `${tachiSnapshot.node.chainId} · ${tachiSnapshot.health.advertisedValidators} validators · Quorum ${tachiSnapshot.quorum.threshold}/${tachiSnapshot.quorum.validatorCount}`
                   : "Signet RPC active (https://rpc-signet.tachibtc.com)"}
               </strong>
-              {tachiError && <span className="text-[var(--danger)] ml-2">{tachiError}</span>}
+              {tachiError && <span className="text-danger ml-2">{tachiError}</span>}
             </div>
           </div>
-          <button onClick={checkTachi} disabled={tachiBusy} className="btn-ghost px-4 py-2 rounded-lg text-xs font-mono">
+          <button onClick={checkTachi} disabled={tachiBusy} className="btn-ghost w-full md:w-auto px-4 py-2.5 rounded-lg text-xs font-mono text-center">
             {tachiBusy ? "Checking Node..." : "Inspect Live Network"}
           </button>
         </div>
