@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { SiteHeader } from "@/components/site-header";
+import { LogoMark } from "@/components/logo-mark";
 import { ScrollReveal } from "@/components/scroll-reveal";
 import { Reveal, ScrollProgress, Parallax, SPRING } from "@/components/motion";
 
@@ -389,6 +390,30 @@ export default function Home() {
               </div>
             </Reveal>
           </div>
+        </div>
+      </section>
+
+      {/* BRAND BANNER — the social/OG card, placed in-page directly under the
+          hero so the preview visual is also part of the product. <img> rather
+          than CSS background so it gets an alt text and lazy-loads. */}
+      <section className="relative px-4 sm:px-6 lg:px-10 pb-14 sm:pb-16 lg:pb-20">
+        <div className="max-w-6xl mx-auto">
+          <Reveal delay={0.15}>
+            <div className="card overflow-hidden rounded-2xl">
+              {/* eslint-disable-next-line @next/next/no-img-element -- brand art is a
+                  fixed pre-rendered asset at exactly 1200x630; next/image would
+                  re-encode it without any layout benefit. */}
+              <img
+                src="/brand/banner.png"
+                alt="DrawBound — credit that cannot outrun its proof. Native BTC credit protocol."
+                width={1200}
+                height={630}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-auto block"
+              />
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -1001,17 +1026,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-6">
           <div className="flex flex-wrap items-center gap-3 text-center sm:text-left justify-center sm:justify-start">
             <Link href="/" className="flex items-center gap-2.5 min-h-[44px]">
-              <svg viewBox="0 0 28 28" className="w-6 h-6">
-                <rect x="2" y="2" width="24" height="24" rx="6" fill="none" stroke="url(#logoGrad2)" strokeWidth="1.5" />
-                <path d="M8 18 Q14 8 20 14 Q14 20 8 12" fill="none" stroke="#e8a04e" strokeWidth="1.5" strokeLinecap="round" />
-                <path d="M8 14 Q14 20 20 10" fill="none" stroke="#5fb878" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 2" />
-                <defs>
-                  <linearGradient id="logoGrad2" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stopColor="#e8a04e" />
-                    <stop offset="1" stopColor="#5fb878" />
-                  </linearGradient>
-                </defs>
-              </svg>
+              <LogoMark size={24} uid="Footer" />
               <span className="font-display text-base font-medium">DrawBound</span>
             </Link>
             <span className="hidden sm:inline text-[var(--border)]">•</span>

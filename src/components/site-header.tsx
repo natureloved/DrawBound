@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TAP_SPRING } from "./motion";
+import { LogoMark } from "./logo-mark";
 
 const NAV_ITEMS = [
   { href: "#thesis", label: "Thesis" },
@@ -191,19 +192,7 @@ export function SiteHeader() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between gap-4">
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <span className="relative w-7 h-7 block">
-            <svg viewBox="0 0 28 28" className="w-7 h-7">
-              <rect x="2" y="2" width="24" height="24" rx="6" fill="none" stroke="url(#logoGradSite)" strokeWidth="1.5" />
-              <path d="M8 18 Q14 8 20 14 Q14 20 8 12" fill="none" stroke="#e8a04e" strokeWidth="1.5" strokeLinecap="round" />
-              <path d="M8 14 Q14 20 20 10" fill="none" stroke="#5fb878" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 2" />
-              <defs>
-                <linearGradient id="logoGradSite" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stopColor="#e8a04e" />
-                  <stop offset="1" stopColor="#5fb878" />
-                </linearGradient>
-              </defs>
-            </svg>
-          </span>
+          <LogoMark size={28} uid="Site" />
           <span className="font-display text-lg font-medium tracking-tight">DrawBound</span>
         </Link>
 

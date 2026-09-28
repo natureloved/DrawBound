@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" font-family="Georgia, 'Times New Roman', serif">
+  <defs>
+    <linearGradient id="b-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0908"/>
+      <stop offset="1" stop-color="#15130f"/>
+    </linearGradient>
+    <radialGradient id="b-glow-gold" cx="0.16" cy="0.12" r="0.62">
+      <stop offset="0" stop-color="#e8a04e" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#e8a04e" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="b-glow-proof" cx="0.88" cy="0.88" r="0.55">
+      <stop offset="0" stop-color="#5fb878" stop-opacity="0.11"/>
+      <stop offset="1" stop-color="#5fb878" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="b-rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e8a04e"/>
+      <stop offset="1" stop-color="#5fb878"/>
+    </linearGradient>
+    <linearGradient id="b-logo-stroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e8a04e"/>
+      <stop offset="1" stop-color="#5fb878"/>
+    </linearGradient>
+    <pattern id="b-grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0 L0 0 0 48" fill="none" stroke="#f5f1ea" stroke-opacity="0.028" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <!-- base -->
+  <rect width="1200" height="630" fill="url(#b-bg)"/>
+  <rect width="1200" height="630" fill="url(#b-grid)"/>
+  <rect width="1200" height="630" fill="url(#b-glow-gold)"/>
+  <rect width="1200" height="630" fill="url(#b-glow-proof)"/>
+
+  <!-- ================= VERTICAL BAND PLAN (verified by curve_check.py) ==========
+     y  88..184  logo mark
+     y 108..192  wordmark + subtitle
+     y 244..330  headline line 1 "Credit that cannot"
+     y 331..416  headline line 2 "outrun its proof."
+     y 424..447  subheadline tagline
+     y 447..481  clear band
+     y 481..499  badge pills
+     y 499..618  CURVE BAND  <== the proof/credit curves live here, and only here
+     y 618..620  bottom accent rule
+     ======================================================================= -->
+
+  <!-- the proof/credit bound curve — the core visual of the protocol.
+       Confined to y 540..600: clear of the pill bottoms (499) and the rule (618). -->
+  <path d="M0 578 C 220 548, 380 604, 560 570 S 880 552, 1200 578" fill="none" stroke="#5fb878" stroke-width="2" stroke-opacity="0.42" stroke-dasharray="7 7" stroke-linecap="round"/>
+  <path d="M0 596 C 220 566, 380 622, 560 588 S 880 570, 1200 596" fill="none" stroke="#e8a04e" stroke-width="2.5" stroke-opacity="0.78" stroke-linecap="round"/>
+  <!-- bound markers: the vertical ticks showing credit bounded by proof -->
+  <g stroke="#5fb878" stroke-width="1" stroke-opacity="0.3">
+    <path d="M200 556 L200 574"/>
+    <path d="M340 584 L340 606"/>
+    <path d="M480 596 L480 578"/>
+    <path d="M620 566 L620 572"/>
+    <path d="M760 560 L760 566"/>
+    <path d="M900 566 L900 584"/>
+    <path d="M1040 570 L1040 588"/>
+  </g>
+
+  <!-- bottom accent rule -->
+  <rect x="0" y="618" width="1200" height="2" fill="url(#b-rule)" opacity="0.55"/>
+
+  <!-- logo mark -->
+  <g transform="translate(88,88)">
+    <rect width="96" height="96" rx="22" fill="#0a0908"/>
+    <rect x="1.5" y="1.5" width="93" height="93" rx="20.5" fill="none" stroke="url(#b-logo-stroke)" stroke-width="3"/>
+    <path d="M27 39 Q48 21 69 36" fill="none" stroke="#5fb878" stroke-width="3" stroke-linecap="round" stroke-dasharray="4.5 4.5" opacity="0.95"/>
+    <path d="M27 57 Q48 72 69 51" fill="none" stroke="#e8a04e" stroke-width="3.75" stroke-linecap="round"/>
+    <path d="M36 48.5 L36 50.5" stroke="#5fb878" stroke-width="3" stroke-linecap="round"/>
+    <path d="M48 64 L48 39" stroke="#5fb878" stroke-width="2.25" stroke-linecap="round" opacity="0.5"/>
+    <path d="M60 47.5 L60 50.5" stroke="#5fb878" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="212" y="158" fill="#f5f1ea" font-size="78" font-weight="400" letter-spacing="-1.5">DrawBound</text>
+  <text x="214" y="192" fill="#5fb878" font-size="15" font-family="'Courier New', monospace" letter-spacing="4.5">NATIVE BTC CREDIT PROTOCOL</text>
+
+  <!-- headline -->
+  <text x="88" y="330" fill="#f5f1ea" font-size="86" font-weight="300" letter-spacing="-2.5">Credit that cannot</text>
+  <text x="88" y="416" fill="#f5f1ea" font-size="86" font-weight="300" letter-spacing="-2.5">outrun its <tspan fill="#e8a04e" font-style="italic" font-weight="400">proof.</tspan></text>
+
+  <!-- tagline -->
+  <text x="90" y="470" fill="#9a9189" font-size="23" font-weight="300" letter-spacing="0.2">Self-custodial issuance bounded by real-time proof of collateral health.</text>
+
+  <!-- badges -->
+  <g font-family="'Courier New', monospace" font-size="14" letter-spacing="2">
+    <rect x="88" y="500" width="132" height="36" rx="8" fill="none" stroke="#2a2520" stroke-width="1"/>
+    <text x="100" y="524" fill="#e8a04e">NO WRAPPERS</text>
+    <rect x="232" y="500" width="142" height="36" rx="8" fill="none" stroke="#2a2520" stroke-width="1"/>
+    <text x="244" y="524" fill="#5fb878">NO CUSTODIANS</text>
+    <rect x="386" y="500" width="196" height="36" rx="8" fill="none" stroke="#2a2520" stroke-width="1"/>
+    <text x="398" y="524" fill="#f5f1ea">PROOF-BOUNDED</text>
+  </g>
+</svg>

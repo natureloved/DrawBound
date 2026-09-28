@@ -7,6 +7,7 @@ import type { TachiReadOnlySnapshot } from "@/lib/tachi/read-only";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { generateSessionKeypair } from "@/lib/wallet/canonical";
 import { signTransitionRequest } from "@/lib/wallet/transition-builder";
+import { LogoMark } from "@/components/logo-mark";
 
 /**
  * Vault terminal — self-custodial session flow.
@@ -439,17 +440,7 @@ export default function VaultPage() {
       <header className="fixed top-0 left-0 right-0 z-50 nav-blur pt-[env(safe-area-inset-top)] border-b border-[var(--border-soft)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between gap-3">
           <Link href="/" className="flex items-center gap-2.5 shrink-0">
-            <svg viewBox="0 0 28 28" className="w-7 h-7">
-              <rect x="2" y="2" width="24" height="24" rx="6" fill="none" stroke="url(#logoGradVault)" strokeWidth="1.5" />
-              <path d="M8 18 Q14 8 20 14 Q14 20 8 12" fill="none" stroke="#e8a04e" strokeWidth="1.5" strokeLinecap="round" />
-              <path d="M8 14 Q14 20 20 10" fill="none" stroke="#5fb878" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 2" />
-              <defs>
-                <linearGradient id="logoGradVault" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stopColor="#e8a04e" />
-                  <stop offset="1" stopColor="#5fb878" />
-                </linearGradient>
-              </defs>
-            </svg>
+            <LogoMark size={28} uid="Vault" />
             <span className="font-display text-lg font-medium tracking-tight hidden sm:inline">DrawBound</span>
             <span className="text-[10px] font-mono text-[var(--gold)] border border-[var(--border)] px-2 py-0.5 rounded">VAULT</span>
           </Link>
