@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPosition, listPositions, positionIdForVault, savePosition } from "@/lib/store";
+import { connectVault, getPosition, listPositions, positionIdForVault, savePosition } from "@/lib/store";
 import { assertWritePolicy } from "@/lib/security/policy";
 import { getTachiAdapter, isLiveMode } from "@/lib/tachi";
 import { resolveSession, guardRateLimit, readJsonBody, badRequest, forbidden, unauthorized, hasAdminToken } from "@/app/api/_lib/http";
@@ -43,6 +43,10 @@ export async function GET(request: Request) {
     }
   } else if (session) {
     position = await getPosition(session.positionId);
+    if (!position && session.vaultRef) {
+      // Serverless container cold-start fallback: re-hydrate position for this authenticated session
+      position = await connectVault(session.vaultRef, 5000);
+    }
   }
 
   // The full list is admin-only; an ordinary caller gets only their own position.

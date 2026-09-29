@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/config/env";
 import { isHex } from "@/lib/wallet/canonical";
 
@@ -56,6 +56,58 @@ function sweepExpiredSessions(now = Date.now()): void {
   }
 }
 
+const SESSION_SECRET =
+  process.env.ADMIN_TOKEN?.trim() ||
+  process.env.SESSION_SECRET?.trim() ||
+  "drawbound-session-v1-secret-key-fallback";
+
+function signToken(session: Omit<Session, "token">): string {
+  const payload = JSON.stringify([
+    session.vaultRef,
+    session.positionId,
+    session.publicKey,
+    session.createdAt,
+    session.expiresAt,
+    session.ownershipVerified ? 1 : 0,
+    session.ownershipAddress || "",
+    randomBytes(12).toString("hex"),
+  ]);
+  const b64 = Buffer.from(payload, "utf8").toString("base64url");
+  const hmac = createHmac("sha256", SESSION_SECRET).update(b64).digest("base64url");
+  return `${b64}.${hmac}`;
+}
+
+function verifyToken(token: string): Session | undefined {
+  const dot = token.indexOf(".");
+  if (dot === -1) return undefined;
+  const b64 = token.slice(0, dot);
+  const hmac = token.slice(dot + 1);
+  const expectedHmac = createHmac("sha256", SESSION_SECRET).update(b64).digest("base64url");
+  if (!safeEqual(hmac, expectedHmac)) return undefined;
+
+  try {
+    const raw = Buffer.from(b64, "base64url").toString("utf8");
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || arr.length < 8) return undefined;
+    const [vaultRef, positionId, publicKey, createdAt, expiresAt, ownershipVerified, ownershipAddress] = arr;
+    const now = Date.now();
+    if (typeof expiresAt !== "number" || expiresAt <= now) return undefined;
+
+    return {
+      token,
+      vaultRef: String(vaultRef),
+      positionId: String(positionId),
+      publicKey: String(publicKey),
+      createdAt: Number(createdAt),
+      expiresAt: Number(expiresAt),
+      ownershipVerified: Boolean(ownershipVerified),
+      ...(ownershipAddress ? { ownershipAddress: String(ownershipAddress) } : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export function createSession(input: {
   vaultRef: string;
   positionId: string;
@@ -68,8 +120,7 @@ export function createSession(input: {
     throw new Error("Session public key must be a 32-byte x-only hex key");
   }
   const now = Date.now();
-  const session: Session = {
-    token: randomBytes(32).toString("hex"),
+  const sessionBase = {
     vaultRef: input.vaultRef,
     positionId: input.positionId,
     publicKey: input.publicKey.toLowerCase(),
@@ -78,6 +129,8 @@ export function createSession(input: {
     ownershipVerified: Boolean(input.ownershipVerified),
     ...(input.ownershipVerified && input.ownershipAddress ? { ownershipAddress: input.ownershipAddress } : {}),
   };
+  const token = signToken(sessionBase);
+  const session: Session = { ...sessionBase, token };
   sessions.set(session.token, session);
   sweepExpiredSessions(now);
   return session;
@@ -85,7 +138,14 @@ export function createSession(input: {
 
 export function getSession(token: string | null | undefined): Session | undefined {
   if (!token) return undefined;
-  const session = sessions.get(token);
+  let session = sessions.get(token);
+  if (!session) {
+    // Stateless fallback: verify HMAC for requests hitting different serverless containers
+    session = verifyToken(token);
+    if (session) {
+      sessions.set(token, session);
+    }
+  }
   if (!session) return undefined;
   if (session.expiresAt <= Date.now()) {
     sessions.delete(token);

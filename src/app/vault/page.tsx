@@ -90,6 +90,7 @@ export default function VaultPage() {
   const [tachiError, setTachiError] = useState<string | null>(null);
   const [vaultInput, setVaultInput] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [generatingVault, setGeneratingVault] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [ownershipChallenge, setOwnershipChallenge] = useState<{ challenge: string; nonce: string; expiresAt: string } | null>(null);
   const [ownershipAddress, setOwnershipAddress] = useState("");
@@ -297,6 +298,29 @@ export default function VaultPage() {
     },
     [refresh],
   );
+
+  const handleFreshVault = useCallback(async () => {
+    setGeneratingVault(true);
+    setConnectError(null);
+    try {
+      const res = await fetch("/api/wallet/fresh-vault");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.vaultRef) {
+          setVaultInput(data.vaultRef);
+          void connect(data.vaultRef);
+          return;
+        }
+      }
+      setVaultInput(DEMO_VAULT);
+      void connect(DEMO_VAULT);
+    } catch {
+      setVaultInput(DEMO_VAULT);
+      void connect(DEMO_VAULT);
+    } finally {
+      setGeneratingVault(false);
+    }
+  }, [connect]);
 
   const requestOwnershipChallenge = useCallback(async () => {
     const vaultRef = vaultInput.trim();
@@ -608,17 +632,40 @@ export default function VaultPage() {
                   <button onClick={disconnect} className="btn-ghost w-full py-3 rounded-lg text-xs font-mono mt-2">
                     Disconnect Session
                   </button>
+                  <button
+                    onClick={handleFreshVault}
+                    disabled={generatingVault}
+                    className="w-full py-2.5 rounded-lg text-xs font-mono mt-1.5 border border-[var(--border)] hover:border-[var(--gold)] text-[var(--gold)] bg-[rgba(232,160,78,0.05)] hover:bg-[rgba(232,160,78,0.12)] transition-colors"
+                  >
+                    {generatingVault ? "Generating..." : "⚡ Switch to Fresh Demo Vault"}
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center gap-2">
+                  <div className="flex flex-wrap justify-between items-center gap-2">
                     <label className="block text-xs font-mono text-[var(--text-muted)]">Taurus Vault Reference (P2TR)</label>
-                    <button
-                      onClick={() => setVaultInput(DEMO_VAULT)}
-                      className="text-[var(--gold)] text-xs font-mono border border-[var(--border)] px-2.5 py-1.5 rounded bg-[var(--surface-2)] hover:border-[var(--gold)] transition-colors"
-                    >
-                      Use Demo Vault
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleFreshVault}
+                        disabled={generatingVault || connecting}
+                        className="text-[var(--gold)] text-xs font-mono border border-[var(--gold)]/40 hover:border-[var(--gold)] px-2.5 py-1.5 rounded bg-[rgba(232,160,78,0.08)] hover:bg-[rgba(232,160,78,0.18)] transition-all font-medium"
+                        title="Generate a unique isolated P2TR demo vault for testing"
+                      >
+                        {generatingVault ? "Generating..." : "⚡ Fresh Demo Vault"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVaultInput(DEMO_VAULT);
+                          void connect(DEMO_VAULT);
+                        }}
+                        disabled={connecting}
+                        className="text-[var(--text-muted)] hover:text-[var(--text)] text-xs font-mono border border-[var(--border)] px-2.5 py-1.5 rounded bg-[var(--surface-2)] hover:border-[var(--border-strong)] transition-colors"
+                      >
+                        Shared Demo
+                      </button>
+                    </div>
                   </div>
                   <input
                     className="vault-input"

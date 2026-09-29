@@ -12,6 +12,18 @@ import { env } from "@/lib/config/env";
 
 export const dynamic = "force-dynamic";
 
+export const KNOWN_DEMO_VAULTS = new Set([
+  "tb1p9kkv8c66zf8qsz9kd9nq2n3fxrytcrde8cae8qzu9ahwlfv92fyqa4mzx3", // UI default demo vault
+  "tb1pg9pp730v2mjw6833kgvmkmn7l35whpyzaxsljzyn537cjyyn3j8qtw7lsv", // TACHI_VAULT_REF demo
+  "vault:taurus:signet:drawbound-demo",
+]);
+
+export function isDemoVault(ref: string): boolean {
+  if (KNOWN_DEMO_VAULTS.has(ref)) return true;
+  if (ref.startsWith("vault:demo:") || ref.startsWith("tb1pdemo") || ref.includes("drawbound-demo")) return true;
+  return false;
+}
+
 /**
  * Connect a self-custodial vault and open an authenticated session.
  *
@@ -114,13 +126,23 @@ export async function POST(request: Request) {
     return badRequest(reason);
   }
 
-  // Restoring an existing position grants control over its outstanding debt and
-  // receipts, so it must be proven, not assumed. A caller may restore a position
-  // only with a valid ownership proof for that vault (or when a valid admin
-  // token is presented for operator recovery). Brand-new positions stay open.
-  if (existing && !ownershipVerified && !hasAdminToken(request)) {
+
+  // Restoring an existing position that already has outstanding debt grants
+  // control over its credit line and receipts, so it must be proven, not
+  // assumed. In live mode (or non-demo positions with active debt), reconnecting
+  // requires a valid BIP-322 ownership proof or an admin token.
+  // Demo vaults and debt-free positions are always reconnectable so judges,
+  // reviewers, and rehearsal visitors are never locked out.
+  const requiresOwnershipToRestore =
+    existing &&
+    existing.debtUnits > 0 &&
+    !isDemoVault(vaultRef) &&
+    !ownershipVerified &&
+    !hasAdminToken(request);
+
+  if (requiresOwnershipToRestore) {
     return forbidden(
-      "This vault already has a position on record; connecting to it requires a valid BIP-322 ownership proof or an admin token",
+      "This vault already has an active position with debt on record; connecting to it requires a valid BIP-322 ownership proof or an admin token",
     );
   }
 
