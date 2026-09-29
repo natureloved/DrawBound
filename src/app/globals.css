@@ -688,15 +688,19 @@ body::before {
   .md\:col-span-2 { grid-column: span 2 / span 2; }
   .md\:col-span-3 { grid-column: span 3 / span 3; }
   .md\:col-span-5 { grid-column: span 5 / span 5; }
+  .md\:col-span-6 { grid-column: span 6 / span 6; }
   .md\:flex-row { flex-direction: row; }
   .md\:items-end { align-items: flex-end; }
   .md\:items-center { align-items: center; }
   .md\:mt-0 { margin-top: 0; }
+  .md\:w-auto { width: auto; }
 }
 
 @media (min-width: 1024px) {
   .lg\:flex { display: flex; }
+  .lg\:block { display: block; }
   .lg\:hidden { display: none; }
+  .lg\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .lg\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .lg\:grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }

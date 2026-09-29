@@ -99,8 +99,6 @@ export default function VaultPage() {
   const [refreshingProof, setRefreshingProof] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(0);
-  // Which column the mobile tab switcher is showing (desktop shows both).
-  const [mobileTab, setMobileTab] = useState<"vault" | "gate">("vault");
 
   const isLive = adapterMode === "live";
   // Motion consent: spring-based feedback is replaced by instant state
@@ -569,41 +567,11 @@ export default function VaultPage() {
           )}
         </AnimatePresence>
 
-        {/* Mobile section switcher: <lg shows tabs, >=lg shows both columns. */}
-        <div className="lg:hidden mb-5">
-          <div role="tablist" aria-label="Terminal sections" className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-[var(--surface)] border border-[var(--border-soft)]">
-            {[
-              { id: "vault", label: "Vault" },
-              { id: "gate", label: "Credit Gate" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={mobileTab === tab.id}
-                onClick={() => setMobileTab(tab.id as "vault" | "gate")}
-                className={`py-2.5 rounded-lg text-xs font-mono uppercase tracking-widest transition-colors relative ${
-                  mobileTab === tab.id ? "text-[#1a1408]" : "text-[var(--text-muted)]"
-                }`}
-              >
-                {mobileTab === tab.id && (
-                  <motion.span
-                    layoutId="tab-pill"
-                    className="absolute inset-0 rounded-lg bg-[var(--gold)]"
-                    transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 30 }}
-                  />
-                )}
-                <span className="relative z-10">{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 2-Column Grid (aligned side-by-side on desktop, sequential on mobile via the tab switcher) */}
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
-          {/* Column 1: Vault & Collateral Position */}
-          <div className={`lg:col-span-5 space-y-6 ${mobileTab === "vault" ? "" : "hidden lg:block"}`}>
-            {/* Vault Connection Card */}
-            <div className="card p-5 sm:p-7">
+        {/* Row 1: Vault Connection Card & Collateral & Debt Position Card (Side-by-Side) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 items-stretch mb-8">
+          {/* Box 1: Taurus Vault Connection Card */}
+          <div className="card p-5 sm:p-7 flex flex-col justify-between">
+            <div>
               <div className="flex items-center justify-between mb-5 gap-2">
                 <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">TAURUS VAULT / WALLET</div>
                 <span className={`status-tag ${session ? "online" : "idle"}`}>{session ? "● CONNECTED" : "READY"}</span>
@@ -616,7 +584,7 @@ export default function VaultPage() {
                       <span>Connected Taurus Vault</span>
                       <button
                         onClick={() => copyToClipboard(session.vaultRef, "vault")}
-                        className="text-[var(--gold)] text-xs font-mono py-1"
+                        className="text-[var(--gold)] text-xs font-mono py-1 hover:underline"
                       >
                         {copiedKey === "vault" ? "Copied ✓" : "Copy Address"}
                       </button>
@@ -637,7 +605,7 @@ export default function VaultPage() {
                       {ownershipVerified ? "✓ VERIFIED" : "unproven"}
                     </strong>
                   </div>
-                  <button onClick={disconnect} className="btn-ghost w-full py-3 rounded-lg text-xs font-mono">
+                  <button onClick={disconnect} className="btn-ghost w-full py-3 rounded-lg text-xs font-mono mt-2">
                     Disconnect Session
                   </button>
                 </div>
@@ -647,7 +615,7 @@ export default function VaultPage() {
                     <label className="block text-xs font-mono text-[var(--text-muted)]">Taurus Vault Reference (P2TR)</label>
                     <button
                       onClick={() => setVaultInput(DEMO_VAULT)}
-                      className="text-[var(--gold)] text-xs font-mono border border-[var(--border)] px-2.5 py-2 rounded bg-[var(--surface-2)]"
+                      className="text-[var(--gold)] text-xs font-mono border border-[var(--border)] px-2.5 py-1.5 rounded bg-[var(--surface-2)] hover:border-[var(--gold)] transition-colors"
                     >
                       Use Demo Vault
                     </button>
@@ -673,7 +641,7 @@ export default function VaultPage() {
                       void connect(vaultInput, nonce && addr && sig ? { nonce, ownershipAddress: addr, ownershipSignature: sig } : undefined);
                     }}
                     disabled={connecting || !vaultInput.trim()}
-                    className="btn-primary w-full py-3.5 rounded-lg text-xs font-mono"
+                    className="btn-primary w-full py-3.5 rounded-lg text-xs font-mono font-semibold"
                   >
                     {connecting ? (adapterMode === "live" ? "Reading On-Chain VTXOs..." : "Connecting...") : "Connect Vault →"}
                   </button>
@@ -692,7 +660,7 @@ export default function VaultPage() {
                       <button
                         onClick={() => void requestOwnershipChallenge()}
                         disabled={!vaultInput.trim()}
-                        className="text-[var(--gold)] text-xs font-mono border border-[var(--border)] px-2.5 py-2 rounded bg-[var(--surface-2)]"
+                        className="text-[var(--gold)] text-xs font-mono border border-[var(--border)] px-2.5 py-1 rounded bg-[var(--surface-2)] disabled:opacity-40"
                       >
                         Request Challenge
                       </button>
@@ -703,7 +671,7 @@ export default function VaultPage() {
                           <span>Sign this message with the vault user key:</span>
                           <button
                             onClick={() => copyToClipboard(ownershipChallenge.challenge, "challenge")}
-                            className="text-[var(--gold)] py-1"
+                            className="text-[var(--gold)] py-1 hover:underline"
                           >
                             {copiedKey === "challenge" ? "Copied ✓" : "Copy"}
                           </button>
@@ -733,10 +701,15 @@ export default function VaultPage() {
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Collateral Metrics Card */}
-            <div className="card p-5 sm:p-7">
-              <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)] mb-5">Collateral &amp; Debt Position</div>
+          {/* Box 2: Collateral & Debt Position Card (Beside Taurus Vault Box) */}
+          <div className="card p-5 sm:p-7 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-5 gap-2">
+                <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">Collateral &amp; Debt Position</div>
+                <span className={`status-tag ${session ? "healthy" : "idle"}`}>{session ? "● ACTIVE RECORD" : "IDLE"}</span>
+              </div>
               <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-5">
                 <div className="metric-tile">
                   <div className="text-xs font-mono text-[var(--text-dim)]">Locked Collateral</div>
@@ -753,7 +726,7 @@ export default function VaultPage() {
                   </div>
                 </div>
               </div>
-              <div className="mb-5">
+              <div className="mb-6">
                 <div className="flex justify-between text-xs font-mono text-[var(--text-muted)] mb-2">
                   <span>Credit Utilization</span>
                   <span className="text-[var(--text)] font-medium">{progress.toFixed(0)}%</span>
@@ -767,158 +740,175 @@ export default function VaultPage() {
                   />
                 </div>
               </div>
-              <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-1 text-xs font-mono text-[var(--text-muted)] border-t border-[var(--border-soft)] pt-4">
-                <span>
-                  Credit Cap: <strong className="text-[var(--text)]">{position?.creditLimitUnits ?? 0} units</strong>
-                </span>
-                <span>
-                  Exit Status: <strong className="text-[var(--gold)]">{position?.exitStatus ?? "LOCKED"}</strong>
-                </span>
-              </div>
-            </div>
-          </div>
 
-          {/* Column 2: Covenant Gate & Action Terminal */}
-          <div className={`lg:col-span-7 space-y-6 ${mobileTab === "gate" ? "" : "hidden lg:block"}`}>
-            {/* Draw / Repay / Unlock Gate */}
-            <div className="card p-5 sm:p-7">
-              <div className="flex items-center justify-between mb-5 gap-2">
-                <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">Covenant Credit Gate</div>
-                <span className={`status-tag ${proofStatus === "HEALTHY" ? "healthy" : "blocked"}`}>
-                  {proofStatus === "HEALTHY" ? "✓ SATISFIED" : "✕ FROZEN"}
-                </span>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-5 mb-6">
+              {/* Protocol Parameters Grid */}
+              <div className="grid grid-cols-2 gap-3 p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)] mb-5">
                 <div>
-                  <label className="block text-xs font-mono text-[var(--text-muted)] mb-2">Draw Amount (Credit Units)</label>
-                  <div className="amount-input">
-                    <input
-                      inputMode="numeric"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && session) handleDraw();
-                      }}
-                    />
-                    <span>UNITS</span>
-                  </div>
-                  <div className="flex gap-2 mt-2.5">
-                    {[50, 100, 250].map((val) => (
-                      <button key={val} onClick={() => setAmount(String(val))} className="btn-ghost px-3 py-2 rounded-md text-xs font-mono flex-1">
-                        {val}
-                      </button>
-                    ))}
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Min Health Ratio</div>
+                  <div className="text-xs font-mono font-medium text-[var(--proof)] mt-1">
+                    {formatHealth(position?.minHealthBps ?? 12500)}
                   </div>
                 </div>
-
-                <div className="space-y-2.5 sm:space-y-3 bg-[#090807] p-4 rounded-xl border border-[var(--border-soft)] flex flex-col justify-center">
-                  <div className="flex justify-between items-center text-xs font-mono gap-2">
-                    <span className="text-[var(--text-muted)]">Attested Health:</span>
-                    <strong className="text-[var(--proof)]">{formatHealth(proof?.healthBps)}</strong>
-                  </div>
-                  <div className="flex justify-between items-center text-xs font-mono gap-2">
-                    <span className="text-[var(--text-muted)]">Required Min:</span>
-                    <strong className="text-[var(--text)]">{formatHealth(position?.minHealthBps)}</strong>
-                  </div>
-                  <div className="flex justify-between items-center text-xs font-mono gap-2">
-                    <span className="text-[var(--text-muted)]">Proof Expires:</span>
-                    <strong className={!isFresh ? "text-[var(--danger)]" : "text-[var(--text-dim)]"}>{formatDate(proof?.expiresAt)}</strong>
-                  </div>
-                  <div className="flex justify-between items-center text-xs font-mono gap-2">
-                    <span className="text-[var(--text-muted)]">Proof Source:</span>
-                    <strong className="text-[var(--text-dim)]">{proof?.source ?? "—"}</strong>
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Max LTV Ceiling</div>
+                  <div className="text-xs font-mono font-medium text-[var(--gold)] mt-1">
+                    {position?.minHealthBps ? (1000000 / position.minHealthBps).toFixed(0) + "%" : "80%"}
                   </div>
                 </div>
-              </div>
-
-              {/* Advanced: operator-signed transaction for LIVE mode */}
-              <div className="mb-5 p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)]">
-                <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
-                  <span className="text-xs font-mono text-[var(--text-muted)]">
-                    Advanced · Taurus-signed txHex {isLive && <strong className="text-[var(--danger)]">(required in LIVE)</strong>}
-                  </span>
-                </div>
-                <textarea
-                  className="vault-input min-h-[64px] resize-y"
-                  value={customTxHex}
-                  onChange={(e) => setCustomTxHex(e.target.value.replace(/[^0-9a-fA-F]/g, ""))}
-                  placeholder={isLive ? "Paste the real signed transaction hex from the Taurus wallet" : "Optional in fixture mode"}
-                  spellCheck={false}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  onClick={handleDraw}
-                  disabled={busy || !session || !position || !amount || Number(amount) <= 0}
-                  className="btn-primary w-full py-4 rounded-lg text-xs font-mono text-center font-semibold"
-                >
-                  {busy ? "Authorizing..." : "Authorize Draw →"}
-                </button>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={handleRepay}
-                    disabled={busy || !session || !position?.debtUnits}
-                    className="btn-ghost py-3 rounded-lg text-xs font-mono text-center"
-                  >
-                    Repay All
-                  </button>
-                  <button
-                    onClick={handleUnlock}
-                    disabled={busy || !session || position?.debtUnits !== 0 || position?.state === "EXITED"}
-                    className="btn-ghost py-3 rounded-lg text-xs font-mono text-center"
-                  >
-                    Request Unlock
-                  </button>
-                </div>
-                {!session && (
-                  <p className="text-[10px] font-mono text-[var(--text-dim)] text-center">Connect a vault to enable signed transitions.</p>
-                )}
               </div>
             </div>
 
-            {/* Decision Audit Timeline */}
-            <div className="card p-5 sm:p-7">
-              <div className="flex items-center justify-between mb-4 gap-2">
-                <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">Decision Receipts</div>
-                <span className="font-mono text-xs text-[var(--text-muted)] whitespace-nowrap">{receipts.length} events</span>
-              </div>
-
-              {receipts.length === 0 ? (
-                <div className="p-6 text-center text-xs font-mono text-[var(--text-dim)] border border-dashed border-[var(--border)] rounded-xl">
-                  No credit transitions yet. The next draw leaves an immutable cryptographic receipt here.
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-72 overflow-y-auto pr-1 -mr-1">
-                  {receipts.slice(0, 8).map((r, i) => (
-                    <motion.div
-                      key={r.id}
-                      initial={reduced ? { opacity: 0 } : { opacity: 0, x: -12 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={reduced ? { duration: 0.15, delay: i * 0.02 } : { type: "spring", stiffness: 400, damping: 32, delay: i * 0.03 }}
-                      className="audit-receipt-item"
-                    >
-                      <div className="min-w-0">
-                        <span className="font-bold text-[var(--gold)] mr-2">{r.action}</span>
-                        <span className={r.result === "ALLOW" ? "text-[var(--proof)]" : "text-[var(--danger)]"}>[{r.result}]</span>
-                        <span className="text-[var(--text-dim)] ml-2 break-words">{r.reason}</span>
-                      </div>
-                      <time className="text-[var(--text-dim)] text-[10px] whitespace-nowrap shrink-0">{formatDate(r.createdAt)}</time>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
+            <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-1 text-xs font-mono text-[var(--text-muted)] border-t border-[var(--border-soft)] pt-4 mt-auto">
+              <span>
+                Credit Cap: <strong className="text-[var(--text)]">{position?.creditLimitUnits ?? 0} units</strong>
+              </span>
+              <span>
+                Exit Status: <strong className="text-[var(--gold)]">{position?.exitStatus ?? "LOCKED"}</strong>
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Network Diagnostics Bar */}
-        <div className="mt-8 p-4 sm:p-5 card flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+        {/* Row 2: Covenant Credit Gate & Decision Receipts */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start mb-8">
+          {/* Box 3: Covenant Credit Gate (7 cols) */}
+          <div className="lg:col-span-7 card p-5 sm:p-7">
+            <div className="flex items-center justify-between mb-5 gap-2">
+              <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">Covenant Credit Gate</div>
+              <span className={`status-tag ${proofStatus === "HEALTHY" ? "healthy" : "blocked"}`}>
+                {proofStatus === "HEALTHY" ? "✓ SATISFIED" : "✕ FROZEN"}
+              </span>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-5 mb-6">
+              <div>
+                <label className="block text-xs font-mono text-[var(--text-muted)] mb-2">Draw Amount (Credit Units)</label>
+                <div className="amount-input">
+                  <input
+                    inputMode="numeric"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && session) handleDraw();
+                    }}
+                  />
+                  <span>UNITS</span>
+                </div>
+                <div className="flex gap-2 mt-2.5">
+                  {[50, 100, 250].map((val) => (
+                    <button key={val} onClick={() => setAmount(String(val))} className="btn-ghost px-3 py-1.5 rounded-md text-xs font-mono flex-1">
+                      {val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2.5 sm:space-y-3 bg-[#090807] p-4 rounded-xl border border-[var(--border-soft)] flex flex-col justify-center">
+                <div className="flex justify-between items-center text-xs font-mono gap-2">
+                  <span className="text-[var(--text-muted)]">Attested Health:</span>
+                  <strong className="text-[var(--proof)]">{formatHealth(proof?.healthBps)}</strong>
+                </div>
+                <div className="flex justify-between items-center text-xs font-mono gap-2">
+                  <span className="text-[var(--text-muted)]">Required Min:</span>
+                  <strong className="text-[var(--text)]">{formatHealth(position?.minHealthBps)}</strong>
+                </div>
+                <div className="flex justify-between items-center text-xs font-mono gap-2">
+                  <span className="text-[var(--text-muted)]">Proof Expires:</span>
+                  <strong className={!isFresh ? "text-[var(--danger)]" : "text-[var(--text-dim)]"}>{formatDate(proof?.expiresAt)}</strong>
+                </div>
+                <div className="flex justify-between items-center text-xs font-mono gap-2">
+                  <span className="text-[var(--text-muted)]">Proof Source:</span>
+                  <strong className="text-[var(--text-dim)]">{proof?.source ?? "—"}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Advanced: operator-signed transaction for LIVE mode */}
+            <div className="mb-5 p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)]">
+              <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
+                <span className="text-xs font-mono text-[var(--text-muted)]">
+                  Advanced · Taurus-signed txHex {isLive && <strong className="text-[var(--danger)]">(required in LIVE)</strong>}
+                </span>
+              </div>
+              <textarea
+                className="vault-input min-h-[64px] resize-y"
+                value={customTxHex}
+                onChange={(e) => setCustomTxHex(e.target.value.replace(/[^0-9a-fA-F]/g, ""))}
+                placeholder={isLive ? "Paste the real signed transaction hex from the Taurus wallet" : "Optional in fixture mode"}
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={handleDraw}
+                disabled={busy || !session || !position || !amount || Number(amount) <= 0}
+                className="btn-primary w-full py-4 rounded-lg text-xs font-mono text-center font-semibold"
+              >
+                {busy ? "Authorizing..." : "Authorize Draw →"}
+              </button>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleRepay}
+                  disabled={busy || !session || !position?.debtUnits}
+                  className="btn-ghost py-3 rounded-lg text-xs font-mono text-center"
+                >
+                  Repay All
+                </button>
+                <button
+                  onClick={handleUnlock}
+                  disabled={busy || !session || position?.debtUnits !== 0 || position?.state === "EXITED"}
+                  className="btn-ghost py-3 rounded-lg text-xs font-mono text-center"
+                >
+                  Request Unlock
+                </button>
+              </div>
+              {!session && (
+                <p className="text-[10px] font-mono text-[var(--text-dim)] text-center">Connect a vault to enable signed transitions.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Box 4: Decision Receipts (5 cols) */}
+          <div className="lg:col-span-5 card p-5 sm:p-7">
+            <div className="flex items-center justify-between mb-4 gap-2">
+              <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)]">Decision Receipts</div>
+              <span className="font-mono text-xs text-[var(--text-muted)] whitespace-nowrap">{receipts.length} events</span>
+            </div>
+
+            {receipts.length === 0 ? (
+              <div className="p-8 text-center text-xs font-mono text-[var(--text-dim)] border border-dashed border-[var(--border)] rounded-xl">
+                No credit transitions yet. The next draw leaves an immutable cryptographic receipt here.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1 -mr-1">
+                {receipts.slice(0, 10).map((r, i) => (
+                  <motion.div
+                    key={r.id}
+                    initial={reduced ? { opacity: 0 } : { opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={reduced ? { duration: 0.15, delay: i * 0.02 } : { type: "spring", stiffness: 400, damping: 32, delay: i * 0.03 }}
+                    className="audit-receipt-item"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-bold text-[var(--gold)] mr-2">{r.action}</span>
+                      <span className={r.result === "ALLOW" ? "text-[var(--proof)]" : "text-[var(--danger)]"}>[{r.result}]</span>
+                      <span className="text-[var(--text-dim)] ml-2 break-words">{r.reason}</span>
+                    </div>
+                    <time className="text-[var(--text-dim)] text-[10px] whitespace-nowrap shrink-0">{formatDate(r.createdAt)}</time>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row 3: Network Diagnostics Bar */}
+        <div className="p-5 sm:p-6 card flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
             <span className="pulse-dot shrink-0" />
-            <div className="font-mono text-xs leading-relaxed flex-1 min-w-0">
-              <span className="text-[var(--text-muted)]">Tachi Node Diagnostics: </span>
+            <div className="font-mono text-xs text-[var(--text-muted)] flex items-center flex-wrap gap-x-2 gap-y-1">
+              <span className="whitespace-nowrap font-medium text-[var(--text-muted)]">Tachi Node Diagnostics:</span>
               <strong className="text-[var(--text)]">
                 {tachiSnapshot
                   ? `${tachiSnapshot.node.chainId} · ${tachiSnapshot.health.advertisedValidators} validators · Quorum ${tachiSnapshot.quorum.threshold}/${tachiSnapshot.quorum.validatorCount}`
@@ -930,7 +920,7 @@ export default function VaultPage() {
           <button
             onClick={checkTachi}
             disabled={tachiBusy}
-            className="btn-ghost px-4 py-2.5 rounded-lg text-xs font-mono w-full md:w-auto shrink-0 transition-colors"
+            className="btn-ghost px-4 py-2.5 rounded-lg text-xs font-mono whitespace-nowrap shrink-0 transition-colors w-full md:w-auto"
           >
             {tachiBusy ? "Checking Node..." : "Inspect Live Network"}
           </button>
