@@ -1,0 +1,31 @@
+app = "drawbound"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  DATA_DIR = "/app/.data"
+  NODE_ENV = "production"
+  APP_MODE = "fixture"
+  PROOF_MODE = "fixture"
+  LIVE_TACHI_ENABLED = "false"
+  KILL_SWITCH = "true"
+  ALLOW_MAINNET = "false"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[mounts]]
+  source = "drawbound_data"
+  destination = "/app/.data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
