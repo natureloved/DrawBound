@@ -102,7 +102,7 @@ body::before {
 .nav-blur {
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  background: rgba(9, 8, 7, 0.85);
+  background: rgba(10, 9, 8, 0.94);
   border-bottom: 1px solid var(--border-soft);
 }
 
@@ -752,8 +752,7 @@ select {
 
 button,
 .btn-primary,
-.btn-ghost,
-.status-tag {
+.btn-ghost {
   min-height: 44px;
 }
 
@@ -922,9 +921,8 @@ body {
   min-width: 0;
 }
 
-/* Also guard flex rows: a flex item's default min-width:auto is the same trap. */
-.grid > *,
-.flex > * {
+/* Also guard grid children so pre/code blocks do not blow out columns */
+.grid > * {
   min-width: 0;
 }
 
@@ -941,8 +939,7 @@ body {
 */
 header a[class*="flex items-center"],
 .card a.text-\[var\(--gold\)\],
-.btn-ghost,
-.status-tag {
+.btn-ghost {
   min-height: 44px;
 }
 

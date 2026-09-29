@@ -470,28 +470,37 @@ export default function VaultPage() {
       </header>
 
       {/* Main Terminal Shell */}
-      <main className="pt-[calc(var(--safe-top)+5rem)] pb-16 px-4 sm:px-6 lg:px-10 max-w-7xl mx-auto relative z-10">
+      <main className="pt-[calc(var(--safe-top)+5.25rem)] sm:pt-28 md:pt-32 pb-16 px-4 sm:px-6 lg:px-10 max-w-7xl mx-auto relative z-10">
         {/* Header Row */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 md:mb-10 pb-6 border-b border-[var(--border-soft)] gap-4">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 md:mb-8 pb-6 border-b border-[var(--border-soft)] gap-4">
           <div>
             <div className="section-label mb-3">
               <span className="pulse-dot" />
               {adapterMode === "live" ? "Live Signet Vault Terminal" : "Fixture Rehearsal Terminal"}
             </div>
-            <h1 className="headline text-[clamp(2rem,7vw,3.4rem)]">
+            <h1 className="headline text-[clamp(2.1rem,5vw,3.2rem)]">
               Taurus Credit <em>Terminal</em>
             </h1>
             <p className="text-sm text-[var(--text-muted)] font-light mt-2 max-w-xl">
               Lock native BTC in non-custodial Taurus Taproot vaults and authorize proof-causal SatVM credit transitions.
             </p>
           </div>
-          {session && (
+          {session ? (
             <div className="md:text-right">
               <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Session Identity</div>
               <div className="text-xs font-mono text-[var(--gold)] mt-0.5 break-all">
                 {session.vaultRef.slice(0, 14)}…{session.vaultRef.slice(-8)}
               </div>
               <div className="text-[10px] font-mono text-[var(--text-dim)] mt-0.5">Schnorr session · key held on device</div>
+            </div>
+          ) : (
+            <div className="md:text-right hidden sm:block">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Terminal Session</div>
+              <div className="text-xs font-mono text-[var(--text-muted)] mt-0.5 flex items-center md:justify-end gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--gold)] inline-block opacity-75" />
+                Ready to Connect
+              </div>
+              <div className="text-[10px] font-mono text-[var(--text-dim)] mt-0.5">Client-side ephemeral keypair</div>
             </div>
           )}
         </div>
@@ -515,7 +524,7 @@ export default function VaultPage() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <span className="banner-chip accent">
                 <span>LIMIT:</span>
                 <strong>{position?.creditLimitUnits ?? 0} UNITS</strong>
@@ -905,10 +914,10 @@ export default function VaultPage() {
         </div>
 
         {/* Network Diagnostics Bar */}
-        <div className="mt-8 p-5 sm:p-6 card flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center gap-3 min-w-0">
-            <span className="pulse-dot mt-1 sm:mt-0 shrink-0" />
-            <div className="font-mono text-xs break-words">
+        <div className="mt-8 p-4 sm:p-5 card flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <span className="pulse-dot shrink-0" />
+            <div className="font-mono text-xs leading-relaxed flex-1 min-w-0">
               <span className="text-[var(--text-muted)]">Tachi Node Diagnostics: </span>
               <strong className="text-[var(--text)]">
                 {tachiSnapshot
@@ -918,7 +927,11 @@ export default function VaultPage() {
               {tachiError && <span className="text-[var(--danger)] ml-2">{tachiError}</span>}
             </div>
           </div>
-          <button onClick={checkTachi} disabled={tachiBusy} className="btn-ghost px-4 py-2.5 rounded-lg text-xs font-mono w-full md:w-auto shrink-0">
+          <button
+            onClick={checkTachi}
+            disabled={tachiBusy}
+            className="btn-ghost px-4 py-2.5 rounded-lg text-xs font-mono w-full md:w-auto shrink-0 transition-colors"
+          >
             {tachiBusy ? "Checking Node..." : "Inspect Live Network"}
           </button>
         </div>
