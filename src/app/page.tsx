@@ -1011,7 +1011,7 @@ export default function Home() {
             </p>
           </div>
           <div className="text-xs text-[var(--text-dim)] font-mono text-center sm:text-right">
-            © 2025 DrawBound · MIT License · Not financial advice
+            © 2026 DrawBound · MIT License · Not financial advice
           </div>
         </div>
       </footer>    </>
