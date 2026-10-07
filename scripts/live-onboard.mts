@@ -98,7 +98,10 @@ async function confirmations(txid: string, vout: number): Promise<number | undef
       signal: AbortSignal.timeout(8_000),
     });
     if (!response.ok) return undefined;
-    const body = (await response.json()) as { result?: { confirmations?: number }; error?: { message?: string } };
+    const body = (await response.json()) as {
+      result?: { confirmations?: number; vout?: unknown[] };
+      error?: { message?: string };
+    };
     if (body.error || !body.result) return 0;
     // Check the vout the operator typed actually exists: registering outpoint 3 of a
     // 2-output transaction is a silent dead end later ("vtxo not found").
