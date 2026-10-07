@@ -12,9 +12,16 @@ import {
 } from "@tachibtc/tachi-sdk-ts";
 import { tachiBaseUrl } from "./http-client";
 import { createTachiSdkClient } from "./sdk-client";
+import { chainIdMatches, expectedChainId, summarizeLockedVtxos } from "./signet";
 import { env } from "../config/env";
 
-export type TachiReadNetwork = "signet" | "regtest";
+/**
+ * Which chain a read is for. `mainnet` is included because silently re-labelling a
+ * mainnet configuration as signet would put the wrong network name on every number
+ * the terminal and the draw gate then reason about; a mainnet read has to name the
+ * endpoint explicitly (tachiBaseUrl throws when it cannot).
+ */
+export type TachiReadNetwork = "signet" | "regtest" | "mainnet";
 
 export interface TachiReadOnlySnapshot {
   observedAt: string;
@@ -47,6 +54,21 @@ export interface TachiReadOnlySnapshot {
     address: string;
     lockedVtxoCount: number;
     lockedSats: number;
+    /** False when the daemon answered with a shape this build cannot read. */
+    readComplete: boolean;
+    reason: string;
+  };
+  /**
+   * Network binding: what this deployment believes the chain is, what the daemon
+   * says it is, and whether they agree. The quorum read enforces the same rule, but
+   * surfacing it is what lets an operator see a mislabelled daemon instead of
+   * trusting a number that came from somewhere else.
+   */
+  binding: {
+    expectedChainId?: string;
+    advertisedChainId: string;
+    matched: boolean;
+    detail: string;
   };
   policy: {
     mode: string;
@@ -54,6 +76,8 @@ export interface TachiReadOnlySnapshot {
     liveWritesEnabled: boolean;
     killSwitch: boolean;
     mainnetAllowed: boolean;
+    liveReadRequired: boolean;
+    networkAttestationRequired: boolean;
   };
 }
 
@@ -67,15 +91,30 @@ export type TachiQuorumReader = (
 ) => Promise<ConsensusQuorum>;
 
 function configuredNetwork(value = process.env.TACHI_NETWORK): TachiReadNetwork {
-  if (value === "regtest") return "regtest";
-  return "signet";
+  if (value === undefined || value === "" || value === "signet") return "signet";
+  if (value === "regtest" || value === "mainnet") return value;
+  // validateEnv() rejects this at boot; the guard is here for callers that build a
+  // snapshot from an explicit, unvalidated value.
+  throw new Error(`unknown TACHI_NETWORK "${value}"`);
 }
 
+/**
+ * Sum a locked-VTXO response tolerantly.
+ *
+ * `result.vtxos.reduce((t, v) => t + v.amount, 0)` looked fine and was not: a daemon
+ * that names the field `amount_sat` (or answers with strings) made every funded
+ * vault read as 0 sats, which in live mode is simultaneously "no collateral" and
+ * "no credit limit" — an outcome indistinguishable from an unfunded vault. The
+ * shared parser reports incompleteness instead, and callers refuse to decide.
+ */
 function lockedSummary(address: string, result: LockedVTXOsResponse): TachiReadOnlySnapshot["vault"] {
+  const summary = summarizeLockedVtxos(result);
   return {
     address,
-    lockedVtxoCount: result.vtxos.length,
-    lockedSats: result.vtxos.reduce((total, vtxo) => total + vtxo.amount, 0),
+    lockedVtxoCount: summary.count,
+    lockedSats: summary.sats,
+    readComplete: summary.complete,
+    reason: summary.reason,
   };
 }
 
@@ -91,11 +130,15 @@ export async function readTachiSnapshot(options: {
   const client = options.client ?? createTachiSdkClient({ baseUrl, timeoutMs: 15_000 });
   const quorumReader = options.quorumReader ?? fetchConsensusQuorum;
 
+  const expected = expectedChainId(network);
   const [health, node, liveValidators, quorum, locked] = await Promise.all([
     client.getHealth() as Promise<HealthResponse>,
     client.getNodeInfo() as Promise<NodeInfoResponse>,
     client.getLiveValidators() as Promise<LiveValidatorsResponse>,
-    quorumReader({ baseUrl, expectedChainId: network }),
+    // The bare network name is accepted by the vendor's token-match rule, so a
+    // daemon advertising "tachi-signet-1" for TACHI_NETWORK=signet passes and a
+    // regtest daemon answering the same query does not.
+    quorumReader({ baseUrl, expectedChainId: expected ?? network }),
     options.vaultAddress
       ? (client.getLockedVtxos(options.vaultAddress) as Promise<LockedVTXOsResponse>)
       : Promise.resolve(undefined),
@@ -128,6 +171,20 @@ export async function readTachiSnapshot(options: {
       secp256k1Count: quorum.secp256k1Count,
       totalConsensusValidators: quorum.totalValidators,
     },
+    binding: (() => {
+      const advertised = node.chain_id || node.network || "";
+      const matched = expected ? chainIdMatches(advertised, expected) : false;
+      return {
+        expectedChainId: expected,
+        advertisedChainId: advertised,
+        matched,
+        detail: !expected
+          ? `no expected chain id for network "${network}"; set TACHI_EXPECTED_CHAIN_ID`
+          : matched
+            ? `daemon chain id "${advertised}" matches "${expected}"`
+            : `daemon chain id "${advertised || "(none)"}" is not "${expected}"`,
+      };
+    })(),
     ...(locked && options.vaultAddress
       ? { vault: lockedSummary(options.vaultAddress, locked) }
       : {}),
@@ -143,6 +200,8 @@ export async function readTachiSnapshot(options: {
       liveWritesEnabled: env.liveEnabled() && !env.killSwitch(),
       killSwitch: env.killSwitch(),
       mainnetAllowed: env.mainnetAllowed(),
+      liveReadRequired: env.liveRequiresChainRead(),
+      networkAttestationRequired: env.liveRequiresChainAttestation(),
     },
   };
 }

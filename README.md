@@ -61,6 +61,8 @@ pnpm exec tsx scripts/operator-live.mts register <txid> [vout]  # register confi
 pnpm exec tsx scripts/operator-live.mts ownership <vaultRef>    # challenge -> signed connect body
 pnpm exec tsx scripts/operator-live.mts status <vaultRef>       # locked-VTXO read
 pnpm exec tsx scripts/operator-live.mts fund-help               # funding + live-write procedure
+corepack pnpm live:check                       # read-only preflight: every gate + a daemon probe (exit 1 when blocked)
+corepack pnpm live:build -- <fundingTxid> <amountSats>   # build/verify a signed transition hex, never broadcast it
 ```
 
 `derive` takes a mnemonic but `ownership` needs a 32-byte hex key, and the wallet
@@ -79,7 +81,7 @@ ORACLE_PRIVATE_KEY=$(openssl rand -hex 32) pnpm oracle
 | Mode | Reads | Writes | Purpose |
 |---|---|---|---|
 | `FIXTURE` (default) | live signet reads (best-effort) | deterministic fixture transitions | rehearsal, demos, CI |
-| `LIVE` | real locked-VTXO state | broadcasts operator-supplied signed `txHex` | funded signet/regtest validation |
+| `LIVE` | real locked-VTXO state, fail closed on a failed read | broadcasts operator-supplied signed `txHex`, then waits for daemon commit | funded signet/regtest validation |
 
 `NATIVE` and `RELAY` remain reserved integration boundaries for verified official Tachi APIs; `RECORDED` (replay of a live trace) is not implemented.
 
@@ -90,6 +92,7 @@ LIVE_TACHI_ENABLED=true
 KILL_SWITCH=false                # live writes are refused while the kill switch is engaged
 TACHI_VAULT_REF=tb1p<your-funded-signet-taurus-vault>
 ALLOWED_VAULT_REFS=tb1p<your-funded-signet-taurus-vault>
+corepack pnpm live:check          # read-only; prints exactly what still blocks a broadcast
 corepack pnpm dev
 ```
 
@@ -99,6 +102,11 @@ Safety gates — all fail closed:
 - **Kill switch**: `KILL_SWITCH=true` (the default) blocks every live broadcast.
 - **Vault allowlist**: only `ALLOWED_VAULT_REFS` entries can connect/read/transition in live mode.
 - **Real transactions only**: the live adapter rejects the synthetic demo payload (tagged with the `dbdemo01` magic prefix) and any hex that is not a plausibly-sized serialized transaction. A live draw/repay/unlock without a real Taurus-signed `txHex` (paste it in the terminal's Advanced box) returns a `DENY` receipt.
+- **Right chain, verified**: before any live decision the daemon must answer `/tachi_nodeInfo` with the chain id for `TACHI_NETWORK` (`tachi-signet-1` / `tachi-regtest-1`); a daemon that advertises nothing is refused, and only loopback hosts are exempt. Attestations are cached for `LIVE_ATTESTATION_TTL_MS`. `TACHI_VAULT_REF` / `ALLOWED_VAULT_REFS` must decode as bech32m witness-v1 addresses with the network's prefix — the same decoder backs the ownership-proof address check, so `tb1p…` garbage can't pass as "a taproot address".
+- **No modeled collateral in live mode**: with `LIVE_REQUIRE_CHAIN_READ=true` (default) a failed or truncated locked-VTXO read refuses the transition instead of substituting fixture collateral.
+- **Pre-broadcast decode + fee ceiling**: the hex is sent to `/tachi_txDecode` first; it must decode, must not exceed `LIVE_MAX_FEE_SATS`, and its outputs must cover the obligation this transition commits (`amount × CREDIT_UNIT_SATS`). `/tachi_txValidate` is deliberately not used — current daemons reject transactions they themselves committed, so its verdict is not evidence.
+- **Commit is confirmed, not assumed**: after `POST /tachi_txBroadcastSync` (where `result.code != 0` means mempool rejection), the adapter polls `/tachi_tx?hash=` until `state == "committed"`. Only then is the ledger moved; a timeout leaves the position untouched and journals the pending tx hash.
+- **Exposure cap applies to live too**: `MAX_TEST_SATS` bounds the obligation a live transition may commit, and it is enforced rather than bypassed by the real transaction.
 - **Signed proofs (optional strict mode)**: set `PROOF_RELAY_PUBLIC_KEYS` to require every health proof to carry a valid BIP-340 signature from an allowlisted oracle key; unsigned server-derived attestations are then rejected. Configure `HAT_ORACLE_URL` to fetch such attestations.
 - **Admin gate**: `POST /api/reset` requires `x-admin-token` matching `ADMIN_TOKEN`; with `ADMIN_TOKEN` unset the route is refused in every mode (fail closed), except when `ALLOW_INSECURE_RESET=true` is set for a local demo.
 
@@ -124,8 +132,13 @@ All state-changing routes are rate-limited per IP and require a session; reads a
 | `/api/positions` | GET / POST | — / admin(live) | session-scoped position, public list; seed a fixture position |
 | `/api/receipts` | GET | — | decision audit trail (session-scoped by default) |
 | `/api/reset` | POST | admin | destructive demo reset |
-| `/api/tachi/diagnostics` | GET | — | read-only Tachi network inspection |
-| `/api/health` | GET | — | liveness, mode, policy, counts |
+| `/api/tachi/diagnostics` | GET | — | read-only Tachi network inspection + live-readiness gates (`?probe=1` adds a daemon probe; rate-limited) |
+| `/api/health` | GET | — | liveness, mode, policy, counts, and the config-only live-gate summary |
+
+A LIVE denial may also carry `pendingTxHash` + `reconcile: true`: the daemon accepted the
+broadcast but had not reported it committed. The position stays untouched (frozen), the
+refusal is journaled against that nonce, and retrying the signed request replays the
+journal instead of broadcasting twice — reconcile with `scripts/operator-live.mts status`.
 
 ## Storage & deployment
 

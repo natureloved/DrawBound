@@ -3,6 +3,7 @@ import { normalizeProof } from "./normalize";
 import { readTachiSnapshot } from "../tachi/read-only";
 import { deriveHealthProof } from "./derive";
 import { env } from "../config/env";
+import { TachiLiveError } from "../tachi/errors";
 
 export interface OracleProofRequest {
   vaultRef: string;
@@ -96,26 +97,46 @@ export async function fetchLiveLoanHealthProof(
 
   try {
     const snapshot = await readTachiSnapshot({
-      network: network === "regtest" ? "regtest" : "signet",
+      network: network === "regtest" || network === "mainnet" ? network : "signet",
       vaultAddress: request.vaultRef,
     });
 
-    // Use the real on-chain locked balance when a funded vault is observed; an empty or
-    // unfunded vault read falls back to the position's modeled collateral so the demo and
-    // real funded vaults both report a consistent, non-zero health ratio.
-    const observed = snapshot.vault?.lockedSats ?? 0;
-    const lockedSats = observed > 0 ? observed : (request.collateralSats ?? 5000);
+    // The chain the read came from must be the chain this deployment is gating on.
+    // The daemon's own answer outranks our configuration: if it reports a
+    // different chain id, every number below describes some other network.
+    if (env.liveEnabled() && !snapshot.binding.matched) {
+      throw new TachiLiveError(`Refusing to gate a live decision on ${snapshot.baseUrl}: ${snapshot.binding.detail}`, {
+        code: "ATTESTATION",
+      });
+    }
 
+    const observed = snapshot.vault?.lockedSats ?? 0;
+
+    // Live mode collateral is exactly what the daemon reports — including 0.
+    // Falling back to modeled collateral here is how a draw gets priced against
+    // sats that are not in the vault.
+    if (env.liveEnabled()) {
+      if (snapshot.vault && !snapshot.vault.readComplete) {
+        throw new TachiLiveError(`Live collateral read unusable: ${snapshot.vault.reason}`, { code: "CHAIN_READ" });
+      }
+      return deriveHealthProof(
+        { id: request.positionId, vaultRef: request.vaultRef, collateralSats: observed, debtUnits: request.debtUnits ?? 0 },
+        { network },
+      );
+    }
+
+    // Fixture mode: a funded real vault still wins over the modeled number, so the
+    // demo and a rehearsal vault against a live read both report a consistent ratio.
+    const lockedSats = observed > 0 ? observed : (request.collateralSats ?? 5000);
     return deriveHealthProof(
-      {
-        id: request.positionId,
-        vaultRef: request.vaultRef,
-        collateralSats: lockedSats,
-        debtUnits: request.debtUnits ?? 0,
-      },
+      { id: request.positionId, vaultRef: request.vaultRef, collateralSats: lockedSats, debtUnits: request.debtUnits ?? 0 },
       { network },
     );
-  } catch {
+  } catch (error) {
+    // In live mode a failed read is a denial, not a fallback: rethrow so the route
+    // records the reason. LIVE_REQUIRE_CHAIN_READ=false restores the old behavior
+    // for an operator who deliberately wants to decide on modeled collateral.
+    if (env.liveEnabled() && env.liveRequiresChainRead()) throw error;
     return deriveHealthProof(
       {
         id: request.positionId,

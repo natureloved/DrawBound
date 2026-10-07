@@ -59,7 +59,10 @@ export async function POST(request: Request) {
   await setProof(current.id, proof);
   return NextResponse.json({
     proof,
-    source: proof.source ?? (isLiveMode() ? "live-hat-oracle" : "official-proof-fixture"),
+    // Never claim an oracle that is not configured: `source` is the proof's own
+    // label, `basis` says what this server actually had available.
+    source: proof.source ?? "unsigned",
+    basis: process.env.HAT_ORACLE_URL?.trim() ? "oracle-attestation" : isLiveMode() ? "live-chain-read" : "official-proof-fixture",
     mode: isLiveMode() ? "LIVE" : "FIXTURE",
   });
 }

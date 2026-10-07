@@ -154,24 +154,49 @@ const built = buildVtxoPsbt({
 const verifyOptions = { maxFeeSats: 10_000n };
 verifyVtxoPsbt(built.psbt, vault, verifyOptions);
 await signVtxoPsbtAsUser(built.psbt, userSigner, vault, verifyOptions);
+// Optional, cooperative path only: finalizeVtxoPsbt assembles the BIP-341 script-path
+// witness from the user signature PLUS the M-of-N quorum cosignatures, which an offline
+// builder does not hold. `scripts/build-transition.mts` attempts it under FINALIZE_PSBT=1
+// and reports the outcome; the ledger spend itself is authorized by the TachiTx signature.
 finalizeVtxoPsbt(built.psbt, vault, verifyOptions);
+
+// The nonce is replay protection: read it from the daemon, never guess. Signing with a
+// stale nonce is rejected, and guessing "0" re-signs the first transition of the account.
+const nonce = await getAccountNonce(Buffer.from(vault.userKey.xOnly), { baseUrl: DAEMON_URL });
 
 const draft = buildTachiTxTransfer({
   vault,
   inputs: built.inputs,
   outputs: built.outputs,
   feeSats: 1_000n,
-  nonce: 0n,
+  nonce,
   psbt: built.psbt,
 });
+// `chainId` is deliberately omitted: binding a signature to a chain id is the correct
+// long-term answer to cross-network replay, but a stock daemon only accepts the plain
+// sighash today and would reject a bound one (see the vendor's tachiTxSigHash notes).
 const signed = await signTachiTx(draft, userSigner);
 const txHex = Buffer.from(encodeTachiTx(signed)).toString("hex");
 ```
 
-Paste `txHex` into DrawBound's **Advanced** box in the Terminal UI (or supply it in `POST /api/credit/draw`).
-DrawBound's `LiveTachiAdapter.submitCreditTransition` broadcasts the transaction to `POST /tachi_txBroadcastSync`, records the real transaction hash, and returns the verified transition receipt.
+Build it without touching the network with `corepack pnpm live:build -- <fundingTxid> <amountSats>`
+(`scripts/build-transition.mts`): it verifies the daemon's chain id, checks the derived vault against
+`TACHI_VAULT_REF`, takes the fee from `/tachi_feeEstimate`, refuses to invent an input VTXO, refuses to
+sign with a nonce it could not read, and only prints `txHex` after `POST /tachi_txDecode` echoes back the
+nonce, fee, inputs and outputs it actually sees.
 
-Drawbound has not created a vault, funded collateral, or broadcast any transaction autonomously. Those steps remain strictly operator-controlled.
+Paste `txHex` into DrawBound's **Advanced** box in the Terminal UI (or supply it in `POST /api/{draw,repay,unlock}`). `LiveTachiAdapter.submitCreditTransition` then, in order:
+
+1. refuses if `KILL_SWITCH=true` or the vault ref is not in `ALLOWED_VAULT_REFS`;
+2. attests the daemon's chain id (`/tachi_nodeInfo`, cached for `LIVE_ATTESTATION_TTL_MS`) — a daemon that names no chain is refused unless it is on loopback;
+3. requires a real locked-VTXO read for the vault (`LIVE_REQUIRE_CHAIN_READ`): a failed or truncated read denies instead of substituting modeled collateral;
+4. sends the hex to `/tachi_txDecode` and checks the decoded fee against `LIVE_MAX_FEE_SATS` and the decoded outputs against the obligation this transition commits (`amount × CREDIT_UNIT_SATS`), bounded by `MAX_TEST_SATS`;
+5. broadcasts to `POST /tachi_txBroadcastSync` — a non-zero `result.code` is a mempool rejection and is surfaced verbatim;
+6. polls `/tachi_tx?hash=<txid>` until `state == "committed"`, up to `LIVE_CONFIRM_TIMEOUT_MS`.
+
+The ledger is only written after step 6 succeeds. If confirmation times out the position is left untouched and the tx hash is journaled as `pendingTxHash` on the denial receipt, so the operator can reconcile with `scripts/operator-live.mts status <vaultRef>` rather than re-broadcast blind. `/tachi_txValidate` is not used anywhere in this path: current daemons report `valid: false` for transactions they have already committed, so its answer is not evidence.
+
+Drawbound has not created a vault, funded collateral, or broadcast any transaction autonomously. Those steps remain strictly operator-controlled. Preflight both the gates and the daemon with `corepack pnpm live:check` (read-only; exits non-zero while anything blocking fails), and see `docs/deployment.md` for the runbook.
 
 Run the read-only inventory with:
 
@@ -187,7 +212,8 @@ Before any live write, record here: the exact official source URL, package/versi
 
 | Field | Value |
 |---|---|
-| Live write executed | **none yet** (operator-gated; fail-closed safety policy enforced) |
+| Live write executed | **none yet** (operator-gated; fail-closed safety policy enforced). The broadcast path and every gate around it are implemented and covered by mocked-daemon tests (`src/tests/live-adapter.test.ts`, `src/tests/live-mode-flow.test.ts`); the remaining step is an operator with a funded vault, which has not run. |
+| Chain binding | expected chain id `tachi-signet-1` (signet) / `tachi-regtest-1` (regtest), asserted from `/tachi_nodeInfo` before any read or write; vault refs decoded with a BIP-173/350 implementation instead of a prefix sniff |
 | Daemon | `https://rpc-signet.tachibtc.com` (reads verified 2026-09-18: health ok, block 322642, 7/7 validators, quorum 5/7) |
 | Broadcast method | `POST /tachi_txBroadcastSync` via `TachiHttpClient.broadcastTxSync` |
 | Vault read method | `GET /tachi_vtxoLocked?vault=<p2tr>` via `getLockedVtxos` |

@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Address, Signer, Verifier } from "bip322-js";
+import { isP2trAddress as isP2trDecoded } from "@/lib/wallet/bech32";
 
 /**
  * BIP-322 vault ownership proof.
@@ -106,13 +107,19 @@ export function verifyOwnershipSignature(input: {
   }
 }
 
-/** True when the value is a bech32 P2TR address on mainnet/testnet/regtest. */
-export function isP2trAddress(value: string): boolean {
-  try {
-    return Address.isP2TR(value);
-  } catch {
-    return false;
-  }
+/**
+ * True when the value is a *decodable* bech32m witness-v1 address.
+ *
+ * This used to delegate to bip322-js's `Address.isP2TR`, which only sniffs the
+ * prefix: it answers true for "tb1pINVALID…", a string that is not even in the
+ * bech32 character set. The ownership gate takes that answer as "this is the
+ * vault's address", so the check now decodes the address for real (charset,
+ * checksum, witness version, program length) via the local BIP-173/350 decoder.
+ * Pass `expectedHrp` ("tb" for signet, "bcrt" for regtest, "bc" for mainnet) to
+ * pin the network as well.
+ */
+export function isP2trAddress(value: string, expectedHrp?: "bc" | "tb" | "bcrt"): boolean {
+  return isP2trDecoded(value, expectedHrp);
 }
 
 /**

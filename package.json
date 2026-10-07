@@ -16,6 +16,8 @@
     "demo:seed": "tsx scripts/seed-demo.ts",
     "demo:reset": "tsx scripts/seed-demo.ts --reset",
     "smoke": "tsx scripts/smoke.mts",
+    "live:check": "tsx scripts/live-check.mts",
+    "live:build": "tsx scripts/build-transition.mts",
     "oracle": "tsx scripts/hat-oracle.ts"
   },
   "dependencies": {
