@@ -13,6 +13,8 @@
  *   OPERATOR_PRIVATE_KEY 32-byte x-only hex — alternative, no mnemonic in the shell
  *   OPERATOR_VTXO_ID     ledger VTXO to spend; REQUIRED unless one is found on the daemon
  *   OPERATOR_INPUT_SATS  value of that VTXO; required with an explicit OPERATOR_VTXO_ID
+ *                      (OPERATOR_VTXO_AMOUNT, the name `operator-live.mts register`
+ *                      uses, is accepted as an alias)
  *   OPERATOR_RPC_URL     bitcoind RPC for the funding wallet (default http://127.0.0.1:38332)
  *   FINALIZE_PSBT        "1" to also attempt finalizeVtxoPsbt (cooperative path only)
  *
@@ -180,12 +182,15 @@ async function main(): Promise<void> {
   //    is the worst possible failure mode for an operator walking this runbook.
   let inputVtxoId: Buffer | undefined;
   let inputValSats: bigint | undefined;
+  // `operator-live.mts register` calls the mint size OPERATOR_VTXO_AMOUNT; accept either
+  // name so an operator does not have to remember which spelling belongs to which script.
+  const inputSatsEnv = process.env.OPERATOR_INPUT_SATS ?? process.env.OPERATOR_VTXO_AMOUNT;
   const explicitVtxo = process.env.OPERATOR_VTXO_ID?.trim().replace(/^0x/, "");
   if (explicitVtxo) {
     if (!/^[0-9a-f]{64}$/.test(explicitVtxo)) fail("OPERATOR_VTXO_ID must be 64-char hex");
-    if (!process.env.OPERATOR_INPUT_SATS) fail("OPERATOR_INPUT_SATS is required when OPERATOR_VTXO_ID is supplied");
+    if (!inputSatsEnv) fail("OPERATOR_INPUT_SATS (or OPERATOR_VTXO_AMOUNT) is required when OPERATOR_VTXO_ID is supplied");
     inputVtxoId = Buffer.from(explicitVtxo, "hex");
-    inputValSats = BigInt(process.env.OPERATOR_INPUT_SATS);
+    inputValSats = BigInt(inputSatsEnv);
   } else {
     try {
       const addressQuery = Buffer.from(vault.userKey.xOnly).toString("hex");
