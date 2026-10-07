@@ -61,6 +61,7 @@ pnpm exec tsx scripts/operator-live.mts register <txid> [vout]  # register confi
 pnpm exec tsx scripts/operator-live.mts ownership <vaultRef>    # challenge -> signed connect body
 pnpm exec tsx scripts/operator-live.mts status <vaultRef>       # locked-VTXO read
 pnpm exec tsx scripts/operator-live.mts fund-help               # funding + live-write procedure
+corepack pnpm live:onboard                     # sequenced driver: derive -> fund -> register -> check -> build (stops before the write)
 corepack pnpm live:check                       # read-only preflight: every gate + a daemon probe (exit 1 when blocked)
 corepack pnpm live:build -- <fundingTxid> <amountSats>   # build/verify a signed transition hex, never broadcast it
 ```

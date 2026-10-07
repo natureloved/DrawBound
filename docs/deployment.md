@@ -92,6 +92,10 @@ Live writes are real transactions on a real network. The gates are the product; 
 short-circuit them. Everything below is read-only until step 6, and no step is executed by
 the server on its own initiative.
 
+Steps 1-5 are sequenced by `corepack pnpm live:onboard` (add `--dry-run` to see the plan);
+it never broadcasts a credit transition. Run them by hand if you prefer — they are here in
+full, because a driver that hides the money steps is worse than no driver.
+
 ```bash
 # 1. Keys and vault identity (never put a mnemonic in the repo or a browser bundle).
 OPERATOR_MNEMONIC="..." pnpm exec tsx scripts/operator-live.mts derive
