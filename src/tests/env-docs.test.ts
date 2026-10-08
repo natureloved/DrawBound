@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Configuration is a security surface here: nearly every live-execution gate is an env
@@ -14,7 +15,7 @@ import path from "node:path";
  *    deploying knows to set it (this is how `ALLOW_INSECURE_RESET`, a destructive escape
  *    hatch, sat undeclared).
  */
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function read(relative: string): string {
   return readFileSync(path.join(ROOT, relative), "utf8");

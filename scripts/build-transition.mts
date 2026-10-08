@@ -29,6 +29,12 @@
  * either fails obscurely or spends a nonce for nothing.
  */
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+
+if (typeof process.loadEnvFile === "function" && existsSync(".env")) {
+  process.loadEnvFile();
+}
+
 import { secp256k1, schnorr } from "@noble/curves/secp256k1.js";
 import {
   createVault,

@@ -28,22 +28,31 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-const TSX = path.join(ROOT, "node_modules", ".bin", "tsx");
+if (typeof process.loadEnvFile === "function" && existsSync(".env")) {
+  process.loadEnvFile();
+}
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const TSX_CLI = path.join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
 
 /**
- * Exec the repo-local tsx shim directly instead of `pnpm exec tsx`: this script is itself
+ * Exec the repo-local tsx directly instead of `pnpm exec tsx`: this script is itself
  * launched through pnpm, and under corepack the `pnpm` shim is not on the child's PATH
  * (`spawnSync pnpm ENOENT`) — which would surface as a broken driver at the exact moment
- * an operator needs it. The shim is the shebang wrapper pnpm writes in node_modules/.bin.
+ * an operator needs it.
  */
 function nodeScript(script: string, args: string[]): string[] {
-  if (!existsSync(TSX)) {
-    throw new Error(`tsx is not installed at ${TSX} — run \`pnpm install\` in ${ROOT} first`);
+  if (existsSync(TSX_CLI)) {
+    return [process.execPath, TSX_CLI, path.join(ROOT, "scripts", script), ...args];
   }
-  return [TSX, path.join(ROOT, "scripts", script), ...args];
+  const tsxBin = path.join(ROOT, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
+  if (!existsSync(tsxBin)) {
+    throw new Error(`tsx is not installed at ${tsxBin} — run \`pnpm install\` in ${ROOT} first`);
+  }
+  return [tsxBin, path.join(ROOT, "scripts", script), ...args];
 }
 
 const NETWORK = process.env.TACHI_NETWORK === "regtest" ? "regtest" : "signet";

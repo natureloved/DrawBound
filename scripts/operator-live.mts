@@ -30,6 +30,12 @@
  * Funding the vault and building credit-transition transactions stay with the operator
  * (see `fund-help` and docs/tachi-integration.md).
  */
+import { existsSync } from "node:fs";
+
+if (typeof process.loadEnvFile === "function" && existsSync(".env")) {
+  process.loadEnvFile();
+}
+
 import { Address, Signer } from "bip322-js";
 import { secp256k1, schnorr } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";

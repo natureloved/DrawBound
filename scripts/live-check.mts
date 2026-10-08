@@ -15,6 +15,12 @@
  * checks are the app's own (`src/lib/tachi/readiness.ts`), never a copy, so this
  * report cannot drift from what the server will actually enforce.
  */
+import { existsSync } from "node:fs";
+
+if (typeof process.loadEnvFile === "function" && existsSync(".env")) {
+  process.loadEnvFile();
+}
+
 const AS_JSON = process.argv.includes("--json");
 const CONFIG_ONLY = process.argv.includes("--config");
 
