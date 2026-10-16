@@ -27,7 +27,14 @@ async function main() {
   const connectRes = await fetch(`${BASE}/api/wallet/connect`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ vaultRef, sessionPublicKey: pub }) });
   const connect = await j(connectRes);
   assert(connectRes.status === 200 && connect.ok === true, `connect ok (liveReadOk=${connect.liveReadOk}, lockedSats=${connect.lockedSats}, proofSource=${connect.proofSource})`);
-  assert(typeof connect.sessionToken === "string" && connect.sessionToken.length === 64, "session token issued");
+  // The token is `<base64url payload>.<HMAC>`, not a fixed-length opaque string:
+  // pin its shape (two dot-separated segments, payload long enough to hold the
+  // signed fields) rather than a magic length that rots whenever the payload
+  // changes.
+  assert(
+    typeof connect.sessionToken === "string" && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(connect.sessionToken) && connect.sessionToken.length > 100,
+    `session token issued (len=${connect.sessionToken?.length}, format base64url.hmac)`,
+  );
   const token: string = connect.sessionToken;
   const positionId: string = connect.position.id;
   assert(connect.position.creditLimitUnits === 500, `credit limit derived: ${connect.position.creditLimitUnits}`);

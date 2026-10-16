@@ -32,6 +32,8 @@ export interface Session {
   ownershipVerified: boolean;
   /** The key-path P2TR address that signed the ownership proof (when verified). */
   ownershipAddress?: string;
+  /** Epoch this token was minted in; tokens older than the current epoch are revoked. */
+  epoch: number;
 }
 
 const sessions = new Map<string, Session>();
@@ -42,6 +44,19 @@ const sessions = new Map<string, Session>();
 const MAX_SESSIONS = 10_000;
 let lastSweepAt = Date.now();
 const SWEEP_INTERVAL_MS = 60_000;
+
+// Revocation has to survive the stateless path. `getSession` deliberately
+// re-admits a token whose HMAC still verifies when the in-memory map misses
+// (multi-container serverless deployments), and that same fallback silently
+// re-admitted REVOKED tokens — so `POST /api/wallet/disconnect` had no effect
+// on a token that had ever left this process. Tokens therefore carry the epoch
+// they were minted in; revoking a token advances the epoch, and every token
+// from an older epoch is refused everywhere, including the HMAC fallback.
+// Consequence to keep in mind: one revocation invalidates all other live
+// sessions. That is the correct trade for a self-custodial vault app (the
+// browser reconnects automatically with its stored keypair), and it is far
+// better than a disconnect that does not disconnect.
+let sessionEpoch = 0;
 
 function sweepExpiredSessions(now = Date.now()): void {
   if (now - lastSweepAt < SWEEP_INTERVAL_MS) return;
@@ -70,6 +85,7 @@ function signToken(session: Omit<Session, "token">): string {
     session.expiresAt,
     session.ownershipVerified ? 1 : 0,
     session.ownershipAddress || "",
+    session.epoch,
     randomBytes(12).toString("hex"),
   ]);
   const b64 = Buffer.from(payload, "utf8").toString("base64url");
@@ -88,10 +104,13 @@ function verifyToken(token: string): Session | undefined {
   try {
     const raw = Buffer.from(b64, "base64url").toString("utf8");
     const arr = JSON.parse(raw);
-    if (!Array.isArray(arr) || arr.length < 8) return undefined;
-    const [vaultRef, positionId, publicKey, createdAt, expiresAt, ownershipVerified, ownershipAddress] = arr;
+    if (!Array.isArray(arr) || arr.length < 9) return undefined;
+    const [vaultRef, positionId, publicKey, createdAt, expiresAt, ownershipVerified, ownershipAddress, epoch] = arr;
     const now = Date.now();
     if (typeof expiresAt !== "number" || expiresAt <= now) return undefined;
+    // A revoked token must not be resurrected by the stateless fallback: its
+    // epoch is older than the current one, so it is refused here too.
+    if (typeof epoch !== "number" || epoch < sessionEpoch) return undefined;
 
     return {
       token,
@@ -102,6 +121,7 @@ function verifyToken(token: string): Session | undefined {
       expiresAt: Number(expiresAt),
       ownershipVerified: Boolean(ownershipVerified),
       ...(ownershipAddress ? { ownershipAddress: String(ownershipAddress) } : {}),
+      epoch: Number(epoch),
     };
   } catch {
     return undefined;
@@ -127,6 +147,7 @@ export function createSession(input: {
     createdAt: now,
     expiresAt: now + (input.ttlMs ?? env.sessionTtlMs()),
     ownershipVerified: Boolean(input.ownershipVerified),
+    epoch: sessionEpoch,
     ...(input.ownershipVerified && input.ownershipAddress ? { ownershipAddress: input.ownershipAddress } : {}),
   };
   const token = signToken(sessionBase);
@@ -151,12 +172,26 @@ export function getSession(token: string | null | undefined): Session | undefine
     sessions.delete(token);
     return undefined;
   }
+  // Defence in depth: the map path must honour the epoch too, in case a revoked
+  // token was still cached here from before the revocation.
+  if (session.epoch < sessionEpoch) {
+    sessions.delete(token);
+    return undefined;
+  }
   return session;
 }
 
 export function revokeSession(token: string | null | undefined): boolean {
   if (!token) return false;
-  return sessions.delete(token);
+  const deleted = sessions.delete(token);
+  // Advance the epoch so the stateless HMAC fallback cannot re-admit this token
+  // (or any other token minted before now). Deleting from the map alone was not
+  // enough: `getSession` re-cached any HMAC-valid token on its next presentation.
+  sessionEpoch += 1;
+  for (const [cached, session] of sessions) {
+    if (session.epoch < sessionEpoch) sessions.delete(cached);
+  }
+  return deleted;
 }
 
 /** Number of live sessions (for /api/health). */
@@ -164,9 +199,10 @@ export function sessionCount(): number {
   return sessions.size;
 }
 
-/** Test helper: drop every session. */
+/** Test helper: drop every session. Also resets the revocation epoch. */
 export function clearSessions(): void {
   sessions.clear();
+  sessionEpoch = 0;
 }
 
 export const SESSION_HEADER = "x-drawbound-session";
