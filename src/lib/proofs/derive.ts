@@ -31,12 +31,19 @@ export function deriveHealthProof(
 ): LoanHealthProof {
   const network = opts.network ?? env.network();
   const now = opts.now ?? new Date();
-  const collateralSats = position.collateralSats > 0 ? position.collateralSats : 5000;
+  // The 5,000-sat rehearsal floor exists so the fixture demo has something to
+  // show. It must never apply to a live position: "no collateral read" becoming
+  // "5,000 sats of collateral" is how a vault nobody funded turns into
+  // borrowable capacity. There, zero collateral derives zero health, and a zero
+  // collateral vault has no credit limit either, so the draw gate denies.
+  const collateralSats = position.collateralSats > 0 ? position.collateralSats : env.liveEnabled() ? 0 : 5000;
   const obligationSats = position.debtUnits * collateralSatsPerUnit();
   const healthBps =
-    obligationSats > 0
-      ? Math.min(MAX_HEALTH_BPS, Math.floor((collateralSats / obligationSats) * 10000))
-      : MAX_HEALTH_BPS;
+    collateralSats <= 0
+      ? 0
+      : obligationSats > 0
+        ? Math.min(MAX_HEALTH_BPS, Math.floor((collateralSats / obligationSats) * 10000))
+        : MAX_HEALTH_BPS;
   const maxAgeMs = env.proofMaxAgeSeconds() * 1000;
   return normalizeProof({
     positionId: position.id,

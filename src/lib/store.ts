@@ -205,7 +205,11 @@ export async function connectVault(
   const existing = positions.get(id);
 
   if (existing) {
-    if (collateralSats > 0) {
+    // Live mode applies the read even when it reports zero: a drained or exited
+    // vault must not keep the credit limit it had while it was funded. A *failed*
+    // read never reaches here — live callers refuse the connect instead, so that a
+    // network blip cannot overwrite real state with an artifact of the blip.
+    if (collateralSats > 0 || env.liveEnabled()) {
       existing.collateralSats = collateralSats;
       // The credit limit tracks the collateral-derived limit ONLY. Deriving it as
       // max(derive(collateral), debtUnits) permanently widened borrowing capacity
@@ -223,7 +227,12 @@ export async function connectVault(
     return structuredClone(existing);
   }
 
-  const collateral = collateralSats > 0 ? collateralSats : 5000;
+  // The 5,000-sat default is a fixture-mode rehearsal convenience. In live mode a
+  // vault with nothing observed gets zero collateral — and therefore a zero credit
+  // limit — because inventing collateral for a real vault is exactly how a
+  // self-custodial protocol loses money. Live callers are expected to have refused
+  // earlier when the read failed; this is the backstop.
+  const collateral = collateralSats > 0 ? collateralSats : env.liveEnabled() ? 0 : 5000;
   const fresh: CreditPosition = {
     id,
     vaultRef,

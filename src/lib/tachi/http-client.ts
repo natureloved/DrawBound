@@ -1,3 +1,5 @@
+import { env } from "@/lib/config/env";
+
 export interface TachiHealthResponse {
   status: string;
   validators: number;
@@ -13,6 +15,9 @@ export interface TachiVtxo {
   id: string;
   owner?: string;
   amount: number;
+  /** Alternate spellings seen across daemon builds; read tolerantly via `vtxoSats`. */
+  amount_sat?: number | string;
+  value?: number | string;
   spent?: boolean;
   locked?: boolean;
   vault_address?: string;
@@ -34,7 +39,8 @@ export interface TachiVaultListItem {
   address: string;
   csv_delay?: number;
   threshold?: number;
-  quorum_keyset?: string;
+  /** The daemon returns an array of compressed node keys, not a string. */
+  quorum_keyset?: string[];
   user_key?: string;
 }
 
@@ -64,10 +70,23 @@ const DEFAULT_BASE_URLS = {
   signet: "https://rpc-signet.tachibtc.com",
 } as const;
 
-export function tachiBaseUrl(network = process.env.TACHI_NETWORK || "signet"): string {
-  if (process.env.TACHI_BASE_URL) return process.env.TACHI_BASE_URL.replace(/\/$/, "");
-  return DEFAULT_BASE_URLS[network as keyof typeof DEFAULT_BASE_URLS] || DEFAULT_BASE_URLS.signet;
+/**
+ * Resolve the daemon base URL.
+ *
+ * `TACHI_BASE_URL` wins, then the per-network default. The network is read
+ * through the validated env module rather than `process.env` directly: this is
+ * the function that decides which chain every live read and broadcast talks to,
+ * so an unvalidated `TACHI_NETWORK=tsetnet` must be a boot error (it is), not a
+ * silent fall through to the signet URL.
+ */
+export function tachiBaseUrl(network?: string): string {
+  const override = env.tachiBaseUrl();
+  if (override) return override;
+  const resolved = (network as TachiNetworkName | undefined) ?? env.network();
+  return DEFAULT_BASE_URLS[resolved as keyof typeof DEFAULT_BASE_URLS] ?? DEFAULT_BASE_URLS.signet;
 }
+
+type TachiNetworkName = "regtest" | "signet" | "mainnet";
 
 export class TachiHttpClient {
   private readonly baseUrl: string;
@@ -142,4 +161,34 @@ export class TachiHttpClient {
   broadcastTxSync(tx: string): Promise<unknown> {
     return this.request("/tachi_txBroadcastSync", { method: "POST", body: JSON.stringify({ tx }) });
   }
+
+  /**
+   * Which chain this daemon is on. The live path uses this to refuse to read or
+   * broadcast against a daemon that is not the configured network.
+   */
+  getNodeInfo(): Promise<unknown> {
+    return this.request("/tachi_nodeInfo");
+  }
+
+  /**
+   * Daemon-side decode of a raw transaction, without broadcasting it.
+   *
+   * Note the body key: the decode/validate endpoints take `hex`, while the
+   * broadcast endpoints take `tx`. That asymmetry is the daemon's, not a typo —
+   * getting it wrong is an opaque 400 at the moment a real transaction is at stake.
+   */
+  decodeTransaction(txHex: string): Promise<unknown> {
+    return this.request("/tachi_txDecode", { method: "POST", body: JSON.stringify({ hex: txHex }) });
+  }
+
+  /** Post-broadcast status lookup: pending vs committed, with the block hash. */
+  getTransaction(hash: string): Promise<unknown> {
+    return this.request(`/tachi_tx?hash=${encodeURIComponent(hash)}`);
+  }
+
+  /** Chain-wide counters, used by the readiness report to detect a stalled daemon. */
+  getStats(): Promise<unknown> {
+    return this.request("/tachi_stats");
+  }
 }
+

@@ -13,6 +13,12 @@ primary_region = "iad"
   LIVE_TACHI_ENABLED = "false"
   KILL_SWITCH = "true"
   ALLOW_MAINNET = "false"
+  # Pinned even though they are the defaults: a deployment that later arms live writes
+  # must not be able to lose the chain attestation or the fail-closed collateral read
+  # by forgetting to set them.
+  TACHI_NETWORK = "signet"
+  LIVE_REQUIRE_CHAIN_ATTESTATION = "true"
+  LIVE_REQUIRE_CHAIN_READ = "true"
 
 [http_service]
   internal_port = 3000

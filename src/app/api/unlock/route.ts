@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createReceipt, createReceiptId } from "@/lib/receipts/create";
-import { getTachiAdapter, isLiveMode } from "@/lib/tachi";
+import { isLiveMode } from "@/lib/tachi";
+import { submitLiveTransition } from "@/app/api/_lib/transition";
 import { authenticateAction } from "@/lib/auth/action-auth";
 import { badRequest, guardRateLimit, nonceConflict, readJsonBody } from "@/app/api/_lib/http";
 import { addReceipt, commitTransition, getPosition, getProcessedDraw, rememberProcessedDraw, savePosition, transitionFingerprint, withPositionLock } from "@/lib/store";
@@ -67,8 +68,16 @@ export async function POST(request: Request) {
   }
 
   const txHex = typeof body.txHex === "string" && body.txHex.trim() ? body.txHex.trim() : undefined;
-  if (isLiveMode() && !txHex) {
-    const reason = "Live mode requires a real Taurus-signed txHex to broadcast";
+  const outcome = await submitLiveTransition({
+    positionId: current.id,
+    action: "UNLOCK",
+    amount: 0,
+    txHex,
+    vaultRef: current.vaultRef,
+    requireTxHexInLiveMode: true,
+  });
+  if (!outcome.ok) {
+    const reason = outcome.reason;
     const receipt = createReceipt({
       id: createReceiptId(),
       positionId: current.id,
@@ -78,31 +87,22 @@ export async function POST(request: Request) {
       result: "DENY",
       reason,
       resultingState: current.state,
+      transitionRef: outcome.pendingTxHash ? `satvm:live:pending:${outcome.pendingTxHash}` : undefined,
       createdAt: new Date().toISOString(),
     });
     await addReceipt(receipt);
-    return NextResponse.json({ decision: "DENY", reason, receipt, position: before });
-  }
-
-  let transition: { transitionRef: string };
-  try {
-    transition = await getTachiAdapter().submitCreditTransition({ positionId: current.id, action: "UNLOCK", amount: 0, txHex });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "Live credit transition failed";
-    const receipt = createReceipt({
-      id: createReceiptId(),
-      positionId: current.id,
-      action: "UNLOCK",
-      requestedAmount: 0,
-      previousState: current.state,
-      result: "DENY",
+    // The exit is the one transition that must not be repeated: if the daemon has
+    // the transaction, a second submission is a different transaction.
+    if (outcome.pendingTxHash) await rememberProcessedDraw(fingerprint, receipt);
+    return NextResponse.json({
+      decision: "DENY",
       reason,
-      resultingState: current.state,
-      createdAt: new Date().toISOString(),
+      receipt,
+      position: before,
+      ...(outcome.pendingTxHash ? { pendingTxHash: outcome.pendingTxHash, reconcile: true } : {}),
     });
-    await addReceipt(receipt);
-    return NextResponse.json({ decision: "DENY", reason, receipt, position: before });
   }
+  const transition = outcome.transition;
 
   const next = { ...before, state: "EXITED" as const, exitStatus: "EXITED" as const, nonce: current.nonce + 1 };
   await savePosition(next);
@@ -121,6 +121,6 @@ export async function POST(request: Request) {
   });
   await commitTransition(next, receipt);
   await rememberProcessedDraw(fingerprint, receipt);
-  return NextResponse.json({ decision: "ALLOW", receipt, position: next });
+  return NextResponse.json({ decision: "ALLOW", receipt, position: next, ...(isLiveMode() ? { transition } : {}) });
   });
 }

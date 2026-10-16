@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { assertPositionInvariants } from "@/lib/domain/invariants";
 import { createReceipt, createReceiptId } from "@/lib/receipts/create";
-import { getTachiAdapter, isLiveMode } from "@/lib/tachi";
+import { isLiveMode } from "@/lib/tachi";
+import { submitLiveTransition } from "@/app/api/_lib/transition";
 import { deriveHealthProof } from "@/lib/proofs/derive";
 import { authenticateAction } from "@/lib/auth/action-auth";
 import { badRequest, guardRateLimit, nonceConflict, readJsonBody } from "@/app/api/_lib/http";
@@ -49,8 +50,15 @@ export async function POST(request: Request) {
   if (stale) return stale;
 
   const txHex = typeof body.txHex === "string" && body.txHex.trim() ? body.txHex.trim() : undefined;
-  if (isLiveMode() && !txHex) {
-    const reason = "Live mode requires a real Taurus-signed txHex to broadcast";
+  const outcome = await submitLiveTransition({
+    positionId: current.id,
+    action: "REPAY",
+    amount: repayable,
+    txHex,
+    vaultRef: current.vaultRef,
+    requireTxHexInLiveMode: true,
+  });
+  if (!outcome.ok) {
     const receipt = createReceipt({
       id: createReceiptId(),
       positionId: current.id,
@@ -58,33 +66,24 @@ export async function POST(request: Request) {
       requestedAmount: amount,
       previousState: current.state,
       result: "DENY",
-      reason,
+      reason: outcome.reason,
       resultingState: current.state,
+      transitionRef: outcome.pendingTxHash ? `satvm:live:pending:${outcome.pendingTxHash}` : undefined,
       createdAt: new Date().toISOString(),
     });
     await addReceipt(receipt);
-    return NextResponse.json({ decision: "DENY", reason, receipt, position: current });
-  }
-
-  let transition: { transitionRef: string };
-  try {
-    transition = await getTachiAdapter().submitCreditTransition({ positionId: current.id, action: "REPAY", amount: repayable, txHex });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "Live credit transition failed";
-    const receipt = createReceipt({
-      id: createReceiptId(),
-      positionId: current.id,
-      action: "REPAY",
-      requestedAmount: amount,
-      previousState: current.state,
-      result: "DENY",
-      reason,
-      resultingState: current.state,
-      createdAt: new Date().toISOString(),
+    // A repayment whose broadcast is merely unconfirmed is journaled like a draw:
+    // the hash is on its way to committing, and re-broadcasting it is not the fix.
+    if (outcome.pendingTxHash) await rememberProcessedDraw(fingerprint, receipt);
+    return NextResponse.json({
+      decision: "DENY",
+      reason: outcome.reason,
+      receipt,
+      position: current,
+      ...(outcome.pendingTxHash ? { pendingTxHash: outcome.pendingTxHash, reconcile: true } : {}),
     });
-    await addReceipt(receipt);
-    return NextResponse.json({ decision: "DENY", reason, receipt, position: current });
   }
+  const transition = outcome.transition;
 
   const debtUnits = current.debtUnits - repayable;
   const next = {
@@ -113,6 +112,6 @@ export async function POST(request: Request) {
   });
   await commitTransition(next, receipt);
   await rememberProcessedDraw(fingerprint, receipt);
-  return NextResponse.json({ decision: "ALLOW", receipt, position: next });
+  return NextResponse.json({ decision: "ALLOW", receipt, position: next, ...(isLiveMode() ? { transition } : {}) });
   });
 }

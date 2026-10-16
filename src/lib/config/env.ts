@@ -34,7 +34,19 @@ const envSchema = z.object({
   TACHI_NETWORK: z.enum(["signet", "regtest", "mainnet"]).default("signet"),
   TACHI_BASE_URL: z.union([z.url(), z.literal("")]).default(""),
   TACHI_RPC_URL: z.union([z.url(), z.literal("")]).default(""),
+  // Chain id the daemon must advertise (e.g. "tachi-signet-1"). Empty means
+  // "derive from TACHI_NETWORK", which is defined for signet/regtest only.
+  TACHI_EXPECTED_CHAIN_ID: z.string().max(120).default(""),
   LIVE_TACHI_ENABLED: z.enum(BOOL_STRINGS).default("false"),
+  // Live execution tuning. All fail closed: a value that cannot be read is an
+  // error, never a silent default to "just broadcast it".
+  LIVE_REQUIRE_CHAIN_ATTESTATION: z.enum(BOOL_STRINGS).default("true"),
+  LIVE_REQUIRE_CHAIN_READ: z.enum(BOOL_STRINGS).default("true"),
+  LIVE_ATTESTATION_TTL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+  LIVE_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
+  LIVE_CONFIRM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(45_000),
+  LIVE_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(30_000).default(1_500),
+  LIVE_MAX_FEE_SATS: z.coerce.number().int().positive().max(1_000_000).default(5_000),
   ALLOW_MAINNET: z.enum(BOOL_STRINGS).default("false"),
   KILL_SWITCH: z.enum(BOOL_STRINGS).default("true"),
   MAX_TEST_SATS: z.coerce.number().int().positive().default(5000),
@@ -69,7 +81,25 @@ export type EnvShape = z.infer<typeof envSchema>;
  * on that basis, which means the protocol is only as honest as its operator.
  * Requiring an oracle (HAT_ORACLE_URL) or a strict proof allowlist makes the
  * health input externally verifiable before any real write happens.
+ *
+ * The second group is the signet binding: a live deployment used to boot with an
+ * empty allowlist, no vault ref, and an address from another network, then fail
+ * confusingly at the first broadcast (or not fail at all). Those are now startup
+ * errors. The prefix test here is deliberately cheap — the authoritative bech32m
+ * decode lives in `checkVaultRef` (src/lib/tachi/signet.ts) and runs on every
+ * live operation — but it must not import that module: this function executes
+ * while `env` is still initializing, so the config module has to stay a leaf.
  */
+const P2TR_PREFIX: Record<string, string> = { signet: "tb1p", regtest: "bcrt1p", mainnet: "bc1p" };
+
+function looksLikeP2trForNetwork(value: string, network: string): boolean {
+  const prefix = P2TR_PREFIX[network];
+  if (!prefix) return false;
+  const candidate = value.trim().toLowerCase();
+  // 42-char witness program + prefix; bech32m checksum is verified at operation time.
+  return candidate.startsWith(prefix) && candidate.length >= prefix.length + 58 && candidate.length <= prefix.length + 66 && /^[a-z0-9]+$/.test(candidate);
+}
+
 export function validatePolicy(source: NodeJS.ProcessEnv = process.env): void {
   const live = readBoolFrom(source, "LIVE_TACHI_ENABLED") || source.PROOF_MODE === "live";
   if (!live) return;
@@ -82,6 +112,48 @@ export function validatePolicy(source: NodeJS.ProcessEnv = process.env): void {
       "live mode requires externally verifiable health: set HAT_ORACLE_URL or PROOF_RELAY_PUBLIC_KEYS " +
         "(otherwise the gate can only self-attest health and broadcast on it)",
     );
+  }
+
+  const network = source.TACHI_NETWORK?.trim() || "signet";
+  if (!P2TR_PREFIX[network]) {
+    invalid("TACHI_NETWORK", `live mode needs one of signet|regtest|mainnet, got "${source.TACHI_NETWORK}"`);
+  }
+
+  if (network === "mainnet" && !source.TACHI_EXPECTED_CHAIN_ID?.trim()) {
+    invalid(
+      "TACHI_EXPECTED_CHAIN_ID",
+      "mainnet has no published chain-id default; set TACHI_EXPECTED_CHAIN_ID to the chain id your daemon advertises",
+    );
+  }
+
+  const attestationDisabled = source.LIVE_REQUIRE_CHAIN_ATTESTATION?.trim() === "false";
+  if (attestationDisabled && !hasOracle) {
+    invalid(
+      "LIVE_REQUIRE_CHAIN_ATTESTATION",
+      "disabling network attestation is only permitted alongside a signed-proof anchor (HAT_ORACLE_URL), " +
+        "otherwise neither the chain the transactions land on nor the health they are gated by is externally verified",
+    );
+  }
+
+  const vaultRefs = (source.ALLOWED_VAULT_REFS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (vaultRefs.length === 0) {
+    invalid("ALLOWED_VAULT_REFS", "live mode requires a non-empty vault allowlist; without it nothing bounds which vault may be transitioned");
+  }
+  const configured = source.TACHI_VAULT_REF?.trim();
+  if (!configured) {
+    invalid("TACHI_VAULT_REF", "live mode requires the operator's funded TAURUS P2TR vault address");
+  }
+  for (const ref of configured ? [configured, ...vaultRefs] : vaultRefs) {
+    if (!looksLikeP2trForNetwork(ref, network)) {
+      invalid(
+        "ALLOWED_VAULT_REFS",
+        `"${ref}" is not a P2TR address for TACHI_NETWORK=${network} (expected the "${P2TR_PREFIX[network]}" prefix); ` +
+          "a vault address from another network can never match the daemon's locked-VTXO index",
+      );
+    }
   }
 }
 
@@ -153,6 +225,44 @@ export const env = {
   },
   mainnetAllowed(): boolean {
     return readBool("ALLOW_MAINNET", false) && readBool("LIVE_TACHI_ENABLED", false) && !readBool("KILL_SWITCH", true);
+  },
+  /** Base URL override for the Tachi daemon; empty means "use the per-network default". */
+  tachiBaseUrl(): string | undefined {
+    const raw = process.env.TACHI_BASE_URL?.trim();
+    return raw ? raw.replace(/\/+$/, "") : undefined;
+  },
+  /** Chain id the daemon must advertise. Empty means "derive from TACHI_NETWORK". */
+  expectedChainId(): string | undefined {
+    const raw = process.env.TACHI_EXPECTED_CHAIN_ID?.trim();
+    return raw ? raw : undefined;
+  },
+  /** When true (default) every live read/broadcast first verifies the daemon's chain id. */
+  liveRequiresChainAttestation(): boolean {
+    return readBool("LIVE_REQUIRE_CHAIN_ATTESTATION", true);
+  },
+  /**
+   * When true (default) live mode refuses to decide on modeled collateral: a
+   * failed chain read is a denial, not a fallback to the fixture numbers.
+   */
+  liveRequiresChainRead(): boolean {
+    return readBool("LIVE_REQUIRE_CHAIN_READ", true);
+  },
+  liveAttestationTtlMs(): number {
+    return readInt("LIVE_ATTESTATION_TTL_MS", 60_000);
+  },
+  liveRequestTimeoutMs(): number {
+    return readInt("LIVE_REQUEST_TIMEOUT_MS", 20_000);
+  },
+  /** How long to wait for a broadcast transaction to be observed committed. */
+  liveConfirmTimeoutMs(): number {
+    return readInt("LIVE_CONFIRM_TIMEOUT_MS", 45_000);
+  },
+  livePollIntervalMs(): number {
+    return readInt("LIVE_POLL_INTERVAL_MS", 1_500);
+  },
+  /** Fee ceiling for a transaction the server will broadcast on an operator's behalf. */
+  liveMaxFeeSats(): number {
+    return readInt("LIVE_MAX_FEE_SATS", 5_000);
   },
   killSwitch(): boolean {
     return readBool("KILL_SWITCH", true);

@@ -94,25 +94,89 @@ export async function POST(request: Request) {
   // Best-effort real read of the operator's vault collateral via the Tachi SDK.
   let lockedSats: number | undefined;
   let liveReadOk = false;
+  let readFailure: string | undefined;
+  let binding: { matched: boolean; detail: string; baseUrl: string } | undefined;
   try {
     const snapshot = await readTachiSnapshot({ vaultAddress: vaultRef });
     lockedSats = snapshot.vault?.lockedSats;
-    liveReadOk = Boolean(snapshot.vault);
-  } catch {
+    // `readComplete` — not merely "a vault block came back" — is the honest test:
+    // a response whose value fields this build cannot parse must not be reported as
+    // a confirmed zero.
+    liveReadOk = Boolean(snapshot.vault?.readComplete);
+    if (snapshot.vault && !snapshot.vault.readComplete) readFailure = snapshot.vault.reason;
+    binding = { matched: snapshot.binding.matched, detail: snapshot.binding.detail, baseUrl: snapshot.baseUrl };
+  } catch (error) {
     liveReadOk = false;
+    readFailure = error instanceof Error ? error.message : "daemon unreachable";
+  }
+
+  // LIVE mode reads are load-bearing, not decorative: the collateral number below
+  // becomes the position's credit limit and the health the draw gate enforces. So a
+  // failed read, or a daemon that says it is on another chain, is a refusal here
+  // rather than a session opened on modeled numbers.
+  if (isLiveMode() && env.liveRequiresChainRead()) {
+    if (!liveReadOk) {
+      return NextResponse.json(
+        {
+          error: "Live collateral read failed",
+          detail: readFailure ?? "the Tachi daemon returned no readable locked-VTXO state",
+          hint: "verify the daemon is reachable and TACHI_BASE_URL points at it; LIVE_REQUIRE_CHAIN_READ=false re-enables modeled collateral",
+        },
+        { status: 503, headers: { "cache-control": "no-store" } },
+      );
+    }
+    if (binding && !binding.matched) {
+      return NextResponse.json(
+        {
+          error: "Daemon network does not match TACHI_NETWORK",
+          detail: `${binding.baseUrl}: ${binding.detail}`,
+          hint: "point TACHI_BASE_URL at a daemon for the configured network, or set TACHI_EXPECTED_CHAIN_ID",
+        },
+        { status: 503, headers: { "cache-control": "no-store" } },
+      );
+    }
   }
 
   // Debt-aware proof bound to this vault's position (restore-safe: reflects existing debt).
   const positionId = positionIdForVault(vaultRef);
   const existing = await getPosition(positionId);
-  const modeledCollateral = lockedSats && lockedSats > 0 ? lockedSats : (existing?.collateralSats ?? 5000);
-  const liveProof = await fetchLiveLoanHealthProof({
-    vaultRef,
-    positionId,
-    network: env.network(),
-    debtUnits: existing?.debtUnits ?? 0,
-    collateralSats: modeledCollateral,
-  });
+  const modeledCollateral = isLiveMode()
+    ? (lockedSats ?? 0)
+    : lockedSats && lockedSats > 0
+      ? lockedSats
+      : (existing?.collateralSats ?? 5000);
+  let liveProof;
+  try {
+    liveProof = await fetchLiveLoanHealthProof({
+      vaultRef,
+      positionId,
+      network: env.network(),
+      debtUnits: existing?.debtUnits ?? 0,
+      collateralSats: modeledCollateral,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: "Live loan-health attestation unavailable",
+        detail: error instanceof Error ? error.message : "health proof could not be derived",
+      },
+      { status: 503, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  // An unfunded vault has nothing to borrow against. Refuse the *fresh* connect with
+  // the funding procedure rather than opening an empty position, but let a position
+  // that already carries debt connect: its owner must always be able to repay.
+  if (isLiveMode() && liveReadOk && (lockedSats ?? 0) <= 0 && (existing?.debtUnits ?? 0) === 0) {
+    return NextResponse.json(
+      {
+        error: "Vault holds no locked VTXOs on this network",
+        detail: `the daemon reports 0 locked sats for ${vaultRef}`,
+        hint: "fund the vault on-chain and register the funding outpoint on the Tachi ledger first: scripts/operator-live.mts register <txid> [vout] (see docs/tachi-integration.md)",
+      },
+      { status: 409, headers: { "cache-control": "no-store" } },
+    );
+  }
 
   // Proof integrity is enforced HERE, at the boundary — the README/deployment
   // docs promise strict mode gates connect as well as every draw, so a proof
@@ -163,7 +227,16 @@ export async function POST(request: Request) {
       lockedSats: lockedSats ?? null,
       restored: Boolean(existing),
       ownershipVerified,
-      proofSource: liveProof.source ?? (isLiveMode() ? "live-hat-oracle" : "live-tachi-read"),
+      // Honest labelling: `source` is where the health NUMBER came from, `basis` is
+      // what the server actually had available. The previous expression claimed
+      // "live-hat-oracle" whenever a proof carried no source tag — even with no
+      // oracle configured at all.
+      proofSource: liveProof.source ?? "unsigned",
+      proofBasis: process.env.HAT_ORACLE_URL?.trim()
+        ? "oracle-attestation"
+        : liveReadOk
+          ? "live-chain-read"
+          : "modeled-collateral",
       position,
       sessionToken: session.token,
       sessionExpiresAt: new Date(session.expiresAt).toISOString(),

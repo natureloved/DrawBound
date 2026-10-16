@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectVault, getPosition, listPositions, positionIdForVault, savePosition } from "@/lib/store";
 import { assertWritePolicy } from "@/lib/security/policy";
 import { getTachiAdapter, isLiveMode } from "@/lib/tachi";
+import { readTachiSnapshot } from "@/lib/tachi/read-only";
 import { resolveSession, guardRateLimit, readJsonBody, badRequest, forbidden, unauthorized, hasAdminToken } from "@/app/api/_lib/http";
 import { calculateCreditLimit } from "@/lib/domain/covenant";
 import { env } from "@/lib/config/env";
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
   const admin = hasAdminToken(request);
 
   let position: CreditPosition | null = null;
+  let rehydrationFailed = false;
 
   if (id || vault) {
     // A position addressed explicitly is only readable by its owner or an admin.
@@ -44,8 +46,26 @@ export async function GET(request: Request) {
   } else if (session) {
     position = await getPosition(session.positionId);
     if (!position && session.vaultRef) {
-      // Serverless container cold-start fallback: re-hydrate position for this authenticated session
-      position = await connectVault(session.vaultRef, 5000);
+      // Serverless container cold-start fallback: re-hydrate the position for this
+      // authenticated session. The collateral must come from the same source the
+      // rest of the protocol uses: in live mode that is a real chain read, and a
+      // read that fails yields NO position rather than one invented at 5,000 sats
+      // (which would hand the session a 500-unit credit limit for collateral that
+      // was never observed).
+      let collateral = 5000;
+      if (isLiveMode()) {
+        try {
+          const snapshot = await readTachiSnapshot({ vaultAddress: session.vaultRef });
+          if (!snapshot.vault?.readComplete) collateral = 0;
+          else collateral = snapshot.vault.lockedSats;
+        } catch {
+          collateral = 0;
+          rehydrationFailed = true;
+        }
+      }
+      // A failed live read must not mint a fresh zero-collateral position either:
+      // there is nothing to restore, so report the degradation instead.
+      if (!rehydrationFailed) position = await connectVault(session.vaultRef, collateral);
     }
   }
 
@@ -58,6 +78,9 @@ export async function GET(request: Request) {
       positions,
       adapterMode: isLiveMode() ? "live" : "fixture",
       ownershipVerified: session?.ownershipVerified ?? null,
+      ...(rehydrationFailed
+        ? { notice: "position could not be re-hydrated: the Tachi daemon did not answer the collateral read" }
+        : {}),
     },
     { headers: { "cache-control": "no-store" } },
   );

@@ -28,6 +28,26 @@ type ApiResult = {
   error?: string;
   detail?: string;
   idempotent?: boolean;
+  /**
+   * LIVE only: the daemon accepted the broadcast but had not reported it committed
+   * within LIVE_CONFIRM_TIMEOUT_MS. No ledger state was written, and the position was
+   * frozen — this hash is the transaction to reconcile, so the action must not be
+   * retried (the server journals it and replays the denial instead).
+   */
+  pendingTxHash?: string;
+  reconcile?: boolean;
+};
+
+/**
+ * Mirror of ReadinessReport (src/lib/tachi/readiness.ts) as served by
+ * /api/tachi/diagnostics. Declared locally rather than imported: that module reads
+ * server env, and this file ships to the browser.
+ */
+type ReadinessView = {
+  mode: "live" | "fixture";
+  executionReady: boolean;
+  blocking: string[];
+  checks: { id: string; label: string; ok: boolean; blocking: boolean; detail: string }[];
 };
 
 interface StoredSession {
@@ -86,6 +106,7 @@ export default function VaultPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "allow" | "deny" | "info"; text: string } | null>(null);
   const [tachiSnapshot, setTachiSnapshot] = useState<TachiReadOnlySnapshot | null>(null);
+  const [tachiReadiness, setTachiReadiness] = useState<ReadinessView | null>(null);
   const [tachiBusy, setTachiBusy] = useState(false);
   const [tachiError, setTachiError] = useState<string | null>(null);
   const [vaultInput, setVaultInput] = useState("");
@@ -231,9 +252,12 @@ export default function VaultPage() {
           );
         }
         if (data.decision) {
+          const pending = data.pendingTxHash
+            ? ` — broadcast is pending on ${data.pendingTxHash.slice(0, 12)}…; do not retry, wait for it to commit (the refusal is journaled against this nonce).`
+            : "";
           setNotice({
             tone: data.decision === "ALLOW" ? "allow" : "deny",
-            text: `${data.decision}${data.idempotent ? " (idempotent replay)" : ""}: ${data.receipt?.reason ?? data.reason ?? ""}`,
+            text: `${data.decision}${data.idempotent ? " (idempotent replay)" : ""}: ${data.receipt?.reason ?? data.reason ?? ""}${pending}`,
           });
         } else if (data.error) {
           setNotice({ tone: "deny", text: data.detail ?? data.error });
@@ -367,11 +391,13 @@ export default function VaultPage() {
     setTachiError(null);
     try {
       const response = await fetch("/api/tachi/diagnostics", { cache: "no-store" });
-      const data = (await response.json()) as TachiReadOnlySnapshot & { error?: string; detail?: string };
+      const data = (await response.json()) as TachiReadOnlySnapshot & { error?: string; detail?: string; readiness?: ReadinessView };
       if (!response.ok) throw new Error(data.detail ?? data.error ?? "Tachi read failed");
       setTachiSnapshot(data);
+      setTachiReadiness(data.readiness ?? null);
     } catch (error) {
       setTachiSnapshot(null);
+      setTachiReadiness(null);
       setTachiError(error instanceof Error ? error.message : "Tachi read failed");
     } finally {
       setTachiBusy(false);
@@ -961,6 +987,25 @@ export default function VaultPage() {
                   ? `${tachiSnapshot.node.chainId} · ${tachiSnapshot.health.advertisedValidators} validators · Quorum ${tachiSnapshot.quorum.threshold}/${tachiSnapshot.quorum.validatorCount}`
                   : "Signet RPC active (https://rpc-signet.tachibtc.com)"}
               </strong>
+              {tachiReadiness && (
+                <span
+                  className={`whitespace-nowrap font-medium ${tachiReadiness.executionReady ? "text-[var(--proof)]" : "text-[var(--danger)]"}`}
+                  title={
+                    tachiReadiness.executionReady
+                      ? "every blocking gate passes: a signed txHex would be broadcast"
+                      : tachiReadiness.blocking.join("\n")
+                  }
+                >
+                  {tachiReadiness.mode === "live"
+                    ? tachiReadiness.executionReady
+                      ? "LIVE ARMED"
+                      : `LIVE BLOCKED: ${tachiReadiness.blocking[0] ?? "see /api/tachi/diagnostics"}`
+                    : "LIVE DISARMED (fixture rehearsal)"}
+                  {tachiReadiness.checks.filter((entry) => !entry.ok && entry.blocking).length > 1
+                    ? ` · +${tachiReadiness.checks.filter((entry) => !entry.ok && entry.blocking).length - 1} more`
+                    : ""}
+                </span>
+              )}
               {tachiError && <span className="text-[var(--danger)] ml-2">{tachiError}</span>}
             </div>
           </div>
