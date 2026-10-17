@@ -141,4 +141,40 @@ describe("Tachi read-only probe", () => {
       expect((await read()).policy.mainnetAllowed).toBe(false);
     });
   });
+
+  // Regression: the diagnostics route awaited this call directly, so a daemon
+  // that accepted the connection and then never answered left the browser's
+  // fetch hanging until it gave up with a bare "Failed to fetch".
+  describe("bounded upstream read", () => {
+    const never = () => new Promise<never>(() => {});
+    const hangingClient = (): TachiReadClient => ({
+      getHealth: never,
+      getNodeInfo: never,
+      getLiveValidators: never,
+      getLockedVtxos: never,
+    });
+
+    it("rejects instead of hanging when the daemon stalls", async () => {
+      const started = Date.now();
+      await expect(
+        readTachiSnapshot({
+          client: hangingClient(),
+          quorumReader: never,
+          timeoutMs: 300,
+        }),
+      ).rejects.toThrow(/timed out/i);
+      // The whole point: it must fail fast, not hang the request.
+      expect(Date.now() - started).toBeLessThan(5_000);
+    });
+
+    it("still resolves normally when the daemon answers promptly", async () => {
+      const snapshot = await readTachiSnapshot({
+        client: stubClient([]),
+        quorumReader: async () => quorum,
+        timeoutMs: 5_000,
+      });
+      expect(snapshot.node.chainId).toBe("tachi-signet-1");
+      expect(snapshot.quorum.threshold).toBe(5);
+    });
+  });
 });

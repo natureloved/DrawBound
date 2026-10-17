@@ -205,6 +205,24 @@ export default function VaultPage() {
         setPosition(data.position);
         setAdapterMode(String(data.adapterMode ?? "fixture").toLowerCase());
         setNowMs(Date.now());
+        // A restored session is unusable for signing: the private key lives only
+        // in module memory and a reload clears it. Silently restoring the session
+        // here is what made "Authorize Draw" do nothing at all — the click looked
+        // accepted, then submitSigned bailed out on a missing key with no visible
+        // cause. Drop the stale handle so the UI shows the connect panel and the
+        // user reconnects (minting a fresh keypair) instead of clicking a dead
+        // button.
+        if (!currentSessionKey()) {
+          window.localStorage.removeItem(SESSION_KEY);
+          setSession(null);
+          setPosition(null);
+          setNotice({
+            tone: "info",
+            text: "Your session ended with the page. Reconnect your vault to authorize transitions — a new signing key is generated on this device.",
+          });
+          await refresh();
+          return;
+        }
         const receiptsRes = await fetch("/api/receipts", { headers: { [SESSION_HEADER]: stored.sessionToken }, cache: "no-store" });
         if (receiptsRes.ok) {
           const receiptData = await receiptsRes.json();
@@ -392,13 +410,20 @@ export default function VaultPage() {
     try {
       const response = await fetch("/api/tachi/diagnostics", { cache: "no-store" });
       const data = (await response.json()) as TachiReadOnlySnapshot & { error?: string; detail?: string; readiness?: ReadinessView };
-      if (!response.ok) throw new Error(data.detail ?? data.error ?? "Tachi read failed");
+      if (!response.ok) throw new Error(data.detail ?? data.error ?? `Tachi read failed (HTTP ${response.status})`);
       setTachiSnapshot(data);
       setTachiReadiness(data.readiness ?? null);
     } catch (error) {
       setTachiSnapshot(null);
       setTachiReadiness(null);
-      setTachiError(error instanceof Error ? error.message : "Tachi read failed");
+      // A bare "Failed to fetch" is the browser's message for a request that never
+      // produced a response — which is exactly what a hung upstream read looks
+      // like from out here. Name the likely cause so the user can act on it.
+      const raw = error instanceof Error ? error.message : "Tachi read failed";
+      const friendly = /failed to fetch|networkerror|load failed/i.test(raw)
+        ? "Could not reach the Tachi daemon from this server. The node may be slow or unreachable — retry, or check that the app's server can reach rpc-signet.tachibtc.com."
+        : raw;
+      setTachiError(friendly);
     } finally {
       setTachiBusy(false);
     }
@@ -424,9 +449,14 @@ export default function VaultPage() {
       const nonce = position.nonce;
       const privateKey = currentSessionKey();
       if (!privateKey) {
+        // Never a silent no-op: the button was clickable, so say why it refused
+        // and what to do about it.
+        window.localStorage.removeItem(SESSION_KEY);
+        forgetSessionKey();
+        setSession(null);
         setNotice({
           tone: "deny",
-          text: "The session signing key is not available (it lives in memory and a reload clears it). Reconnect your vault.",
+          text: "This page's signing key was cleared (a reload ends it). Reconnect your vault — a new key is generated on this device, then authorize the draw again.",
         });
         return;
       }
@@ -920,6 +950,21 @@ export default function VaultPage() {
               >
                 {busy ? "Authorizing..." : "Authorize Draw →"}
               </button>
+              {/* A disabled button with no reason is indistinguishable from a
+                  broken one — the user clicks, nothing happens, and there is
+                  nothing to act on. State why, in words, right where they look. */}
+              {!busy && (!session || !position) && (
+                <p className="text-xs font-mono text-[var(--text-muted)] text-center">
+                  {!session
+                    ? "Connect your vault to authorize a draw."
+                    : "Loading your position…"}
+                </p>
+              )}
+              {!busy && session && position && (!amount || Number(amount) <= 0) && (
+                <p className="text-xs font-mono text-[var(--text-muted)] text-center">
+                  Enter a draw amount in credit units.
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={handleRepay}

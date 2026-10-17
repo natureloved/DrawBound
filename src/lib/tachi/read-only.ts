@@ -124,24 +124,40 @@ export async function readTachiSnapshot(options: {
   vaultAddress?: string;
   client?: TachiReadClient;
   quorumReader?: TachiQuorumReader;
+  timeoutMs?: number;
 } = {}): Promise<TachiReadOnlySnapshot> {
   const network = options.network ?? configuredNetwork();
   const baseUrl = (options.baseUrl ?? tachiBaseUrl(network)).replace(/\/$/, "");
+  // Bound the whole snapshot. `fetchConsensusQuorum` takes a timeout of its own,
+  // but the SDK client's 15s is per-request, so a daemon that accepts the
+  // connection and then stalls (or a network that black-holes the response)
+  // left this call hanging indefinitely. The route awaits it directly, so the
+  // browser's fetch to /api/tachi/diagnostics never resolved and surfaced as
+  // "Failed to fetch" — an error with no cause the user can act on.
+  const timeoutMs = options.timeoutMs ?? 12_000;
+  const deadline = new Promise<never>((_, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Tachi read timed out after ${timeoutMs}ms (${baseUrl})`)), timeoutMs);
+    // Never hold the event loop open just for a watchdog timer.
+    if (typeof timer === "object" && timer && "unref" in timer) timer.unref();
+  });
   const client = options.client ?? createTachiSdkClient({ baseUrl, timeoutMs: 15_000 });
   const quorumReader = options.quorumReader ?? fetchConsensusQuorum;
 
   const expected = expectedChainId(network);
-  const [health, node, liveValidators, quorum, locked] = await Promise.all([
-    client.getHealth() as Promise<HealthResponse>,
-    client.getNodeInfo() as Promise<NodeInfoResponse>,
-    client.getLiveValidators() as Promise<LiveValidatorsResponse>,
-    // The bare network name is accepted by the vendor's token-match rule, so a
-    // daemon advertising "tachi-signet-1" for TACHI_NETWORK=signet passes and a
-    // regtest daemon answering the same query does not.
-    quorumReader({ baseUrl, expectedChainId: expected ?? network }),
-    options.vaultAddress
-      ? (client.getLockedVtxos(options.vaultAddress) as Promise<LockedVTXOsResponse>)
-      : Promise.resolve(undefined),
+  const [health, node, liveValidators, quorum, locked] = await Promise.race([
+    Promise.all([
+      client.getHealth() as Promise<HealthResponse>,
+      client.getNodeInfo() as Promise<NodeInfoResponse>,
+      client.getLiveValidators() as Promise<LiveValidatorsResponse>,
+      // The bare network name is accepted by the vendor's token-match rule, so a
+      // daemon advertising "tachi-signet-1" for TACHI_NETWORK=signet passes and a
+      // regtest daemon answering the same query does not.
+      quorumReader({ baseUrl, expectedChainId: expected ?? network }),
+      options.vaultAddress
+        ? (client.getLockedVtxos(options.vaultAddress) as Promise<LockedVTXOsResponse>)
+        : Promise.resolve(undefined),
+    ]),
+    deadline,
   ]);
 
   return {
