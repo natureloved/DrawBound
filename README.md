@@ -23,7 +23,7 @@ Verify everything:
 ```bash
 corepack pnpm typecheck    # tsc --noEmit
 corepack pnpm lint         # eslint (flat config)
-corepack pnpm test         # 109 unit + integration tests
+corepack pnpm test         # 194 unit + integration tests
 corepack pnpm build        # production build
 corepack pnpm smoke        # HTTP end-to-end run against SMOKE_BASE (default http://127.0.0.1:3107)
 ```
