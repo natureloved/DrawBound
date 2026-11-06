@@ -214,6 +214,8 @@ Before any live write, record here: the exact official source URL, package/versi
 |---|---|
 | Live write executed | **none yet** (operator-gated; fail-closed safety policy enforced). The broadcast path and every gate around it are implemented and covered by mocked-daemon tests (`src/tests/live-adapter.test.ts`, `src/tests/live-mode-flow.test.ts`); the remaining step is an operator with a funded vault, which has not run. |
 | Chain binding | expected chain id `tachi-signet-1` (signet) / `tachi-regtest-1` (regtest), asserted from `/tachi_nodeInfo` before any read or write; vault refs decoded with a BIP-173/350 implementation instead of a prefix sniff |
-| Daemon | `https://rpc-signet.tachibtc.com` (reads verified 2026-09-18: health ok, block 322642, 7/7 validators, quorum 5/7) |
+| Daemon | `https://rpc-signet.tachibtc.com` (reads re-verified 2026-11-06: health ok, daemon version 0.39.0, chain `tachi-signet-1`, synced, height ~1,604,061, 7/7 validators, quorum 5/7; previous snapshot 2026-09-18: block 322642) |
 | Broadcast method | `POST /tachi_txBroadcastSync` via `TachiHttpClient.broadcastTxSync` |
 | Vault read method | `GET /tachi_vtxoLocked?vault=<p2tr>` via `getLockedVtxos` |
+
+> **Note (2026-11-06):** the daemon snapshot in the table above was re-verified live on 2026-11-06 (version 0.39.0, chain `tachi-signet-1`, synced, height ~1,604,061, 7/7 validators, quorum 5/7). The "Live write executed" row is unchanged — still **none yet**. The 2026-10-16 commit message claim of a real broadcast credit transition remains unverified: no transaction hash exists anywhere in this repo. The live-write row may only be filled in by the operator run described in [docs/live-write-checklist.md](live-write-checklist.md), reporting the tx hash, daemon confirmation (`state == "committed"`), vault ref, network, block height, and date.
