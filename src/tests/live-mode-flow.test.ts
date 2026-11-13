@@ -40,7 +40,7 @@ const daemon = vi.hoisted(() => ({
   chainMatched: true,
   unreachable: false,
   broadcastCode: 0,
-  broadcastHash: "cafe1234deadbeef",
+  broadcastHash: "cafe1234deadbeef0123456789abcdef0123456789abcdef0123456789abcdef",
   commitStates: [] as Array<{ state: string; blockhash?: string; epoch?: number; code?: number }>,
   calls: [] as string[],
 }));
@@ -119,6 +119,7 @@ import { generateSessionKeypair } from "@/lib/wallet/canonical";
 import { signTransitionRequest } from "@/lib/wallet/transition-builder";
 import { positionIdForVault, resetStore } from "@/lib/store";
 import { resetTachiAdapterCache } from "@/lib/tachi";
+import { explorerTxUrl, txHashFromTransitionRef } from "@/lib/tachi/explorer";
 import { resetNetworkAttestationCache } from "@/lib/tachi/signet";
 
 const REAL_TX_HEX = `02000000000101${"ab".repeat(80)}`;
@@ -155,7 +156,7 @@ describe("live mode against a stubbed signet daemon", () => {
     daemon.chainMatched = true;
     daemon.unreachable = false;
     daemon.broadcastCode = 0;
-    daemon.broadcastHash = "cafe1234deadbeef";
+    daemon.broadcastHash = "cafe1234deadbeef0123456789abcdef0123456789abcdef0123456789abcdef";
     daemon.commitStates = [];
     daemon.calls = [];
 
@@ -219,8 +220,15 @@ describe("live mode against a stubbed signet daemon", () => {
     const result = await response.json();
 
     expect(result.decision).toBe("ALLOW");
-    expect(result.transition).toMatchObject({ txHash: "cafe1234deadbeef", confirmed: true, chainId: "tachi-signet-1" });
-    expect(result.receipt.transitionRef).toBe(`satvm:live:draw:cafe1234deadbeef:${result.receipt.proofDigest.slice(0, 12)}`);
+    expect(result.transition).toMatchObject({ txHash: "cafe1234deadbeef0123456789abcdef0123456789abcdef0123456789abcdef", confirmed: true, chainId: "tachi-signet-1" });
+    expect(result.receipt.transitionRef).toBe(`satvm:live:draw:cafe1234deadbeef0123456789abcdef0123456789abcdef0123456789abcdef:${result.receipt.proofDigest.slice(0, 12)}`);
+    // Tachi integration requirement 2: the live ALLOW receipt carries a
+    // hash the vault page links to the Tachi Explorer — the draw banner
+    // and the receipt row render exactly this URL.
+    expect(txHashFromTransitionRef(result.receipt.transitionRef)).toBe("cafe1234deadbeef0123456789abcdef0123456789abcdef0123456789abcdef");
+    expect(explorerTxUrl(txHashFromTransitionRef(result.receipt.transitionRef)!)).toBe(
+      "https://signet.tachibtcscan.com/tx/cafe1234deadbeef0123456789abcdef0123456789abcdef0123456789abcdef",
+    );
     expect(result.position.debtUnits).toBe(100);
     // decode runs before broadcast; the status poll runs after. Order matters: a
     // broadcast without a decode check spends a nonce on an envelope nobody read.
@@ -268,9 +276,12 @@ describe("live mode against a stubbed signet daemon", () => {
     const first = await (await drawPost(jsonRequest("/api/draw", body, token))).json();
     expect(first.decision).toBe("DENY");
     expect(first.reconcile).toBe(true);
-    expect(first.pendingTxHash).toBe("cafe1234deadbeef");
+    expect(first.pendingTxHash).toBe("cafe1234deadbeef0123456789abcdef0123456789abcdef0123456789abcdef");
     expect(first.position.debtUnits).toBe(0);
-    expect(first.receipt.transitionRef).toBe("satvm:live:pending:cafe1234deadbeef");
+    expect(first.receipt.transitionRef).toBe("satvm:live:pending:cafe1234deadbeef0123456789abcdef0123456789abcdef0123456789abcdef");
+    // The pending receipt also carries a linkable hash: the banner shows it
+    // as the transaction to reconcile on the explorer.
+    expect(txHashFromTransitionRef(first.receipt.transitionRef)).toBe("cafe1234deadbeef0123456789abcdef0123456789abcdef0123456789abcdef");
 
     const broadcastsAfterFirst = daemon.calls.filter((call) => call.startsWith("broadcast:")).length;
     const retry = await (await drawPost(jsonRequest("/api/draw", body, token))).json();

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { CreditPosition, DecisionReceipt } from "@/lib/domain/types";
 import type { TachiReadOnlySnapshot } from "@/lib/tachi/read-only";
+import { explorerTxUrl, txHashFromTransitionRef } from "@/lib/tachi/explorer";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { generateSessionKeypair } from "@/lib/wallet/canonical";
 import { signTransitionRequest } from "@/lib/wallet/transition-builder";
@@ -104,7 +105,7 @@ export default function VaultPage() {
   const [adapterMode, setAdapterMode] = useState("fixture");
   const [amount, setAmount] = useState("100");
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ tone: "allow" | "deny" | "info"; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ tone: "allow" | "deny" | "info"; text: string; txHash?: string } | null>(null);
   const [tachiSnapshot, setTachiSnapshot] = useState<TachiReadOnlySnapshot | null>(null);
   const [tachiReadiness, setTachiReadiness] = useState<ReadinessView | null>(null);
   const [tachiBusy, setTachiBusy] = useState(false);
@@ -273,9 +274,16 @@ export default function VaultPage() {
           const pending = data.pendingTxHash
             ? ` — broadcast is pending on ${data.pendingTxHash.slice(0, 12)}…; do not retry, wait for it to commit (the refusal is journaled against this nonce).`
             : "";
+          // Tachi integration requirement 2: every transaction triggers an
+          // in-app notification with a clickable link to the transaction on
+          // the Tachi Explorer. The receipt's live transitionRef carries the
+          // daemon hash; a pending broadcast carries it in pendingTxHash.
+          // Fixture refs carry no real hash and parse to null — no link.
+          const txHash = txHashFromTransitionRef(data.receipt?.transitionRef) ?? data.pendingTxHash ?? undefined;
           setNotice({
             tone: data.decision === "ALLOW" ? "allow" : "deny",
             text: `${data.decision}${data.idempotent ? " (idempotent replay)" : ""}: ${data.receipt?.reason ?? data.reason ?? ""}${pending}`,
+            ...(txHash ? { txHash } : {}),
           });
         } else if (data.error) {
           setNotice({ tone: "deny", text: data.detail ?? data.error });
@@ -642,7 +650,19 @@ export default function VaultPage() {
               role="status"
             >
               <span aria-hidden="true">{notice.tone === "allow" ? "✓" : notice.tone === "deny" ? "✕" : "ℹ"}</span>
-              <strong className="leading-relaxed">{notice.text}</strong>
+              <div className="min-w-0">
+                <strong className="leading-relaxed block">{notice.text}</strong>
+                {notice.txHash ? (
+                  <a
+                    href={explorerTxUrl(notice.txHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-mono underline underline-offset-2 break-all"
+                  >
+                    Verify on Tachi Explorer ↗
+                  </a>
+                ) : null}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1000,22 +1020,38 @@ export default function VaultPage() {
               </div>
             ) : (
               <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1 -mr-1">
-                {receipts.slice(0, 10).map((r, i) => (
-                  <motion.div
-                    key={r.id}
-                    initial={reduced ? { opacity: 0 } : { opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={reduced ? { duration: 0.15, delay: i * 0.02 } : { type: "spring", stiffness: 400, damping: 32, delay: i * 0.03 }}
-                    className="audit-receipt-item"
-                  >
-                    <div className="min-w-0">
-                      <span className="font-bold text-[var(--gold)] mr-2">{r.action}</span>
-                      <span className={r.result === "ALLOW" ? "text-[var(--proof)]" : "text-[var(--danger)]"}>[{r.result}]</span>
-                      <span className="text-[var(--text-dim)] ml-2 break-words">{r.reason}</span>
-                    </div>
-                    <time className="text-[var(--text-dim)] text-[10px] whitespace-nowrap shrink-0">{formatDate(r.createdAt)}</time>
-                  </motion.div>
-                ))}
+                {receipts.slice(0, 10).map((r, i) => {
+                  // Tachi integration requirement 2: every receipt that
+                  // carries a live transaction hash links to it on the
+                  // Tachi Explorer. Fixture refs parse to null — no link.
+                  const txHash = txHashFromTransitionRef(r.transitionRef);
+                  return (
+                    <motion.div
+                      key={r.id}
+                      initial={reduced ? { opacity: 0 } : { opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={reduced ? { duration: 0.15, delay: i * 0.02 } : { type: "spring", stiffness: 400, damping: 32, delay: i * 0.03 }}
+                      className="audit-receipt-item"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-bold text-[var(--gold)] mr-2">{r.action}</span>
+                        <span className={r.result === "ALLOW" ? "text-[var(--proof)]" : "text-[var(--danger)]"}>[{r.result}]</span>
+                        <span className="text-[var(--text-dim)] ml-2 break-words">{r.reason}</span>
+                        {txHash ? (
+                          <a
+                            href={explorerTxUrl(txHash)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block text-[11px] font-mono text-[var(--gold)] underline underline-offset-2 break-all mt-1"
+                          >
+                            ↗ Verify on Tachi Explorer
+                          </a>
+                        ) : null}
+                      </div>
+                      <time className="text-[var(--text-dim)] text-[10px] whitespace-nowrap shrink-0">{formatDate(r.createdAt)}</time>
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
           </div>
