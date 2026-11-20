@@ -301,7 +301,7 @@ export default function VaultPage() {
   );
 
   const connect = useCallback(
-    async (ref: string, ownership?: { nonce: string; ownershipAddress: string; ownershipSignature: string }) => {
+    async (ref: string, ownership?: { ownershipNonce: string; ownershipAddress: string; ownershipSignature: string }) => {
       const vaultRef = ref.trim();
       if (!vaultRef) return;
       setConnecting(true);
@@ -761,7 +761,7 @@ export default function VaultPage() {
                       const nonce = ownershipChallenge?.nonce ?? "";
                       const addr = ownershipAddress.trim();
                       const sig = ownershipSignature.trim();
-                      void connect(vaultInput, nonce && addr && sig ? { nonce, ownershipAddress: addr, ownershipSignature: sig } : undefined);
+                      void connect(vaultInput, nonce && addr && sig ? { ownershipNonce: nonce, ownershipAddress: addr, ownershipSignature: sig } : undefined);
                     }}
                     disabled={connecting || !vaultInput.trim()}
                     className="btn-primary w-full py-3.5 rounded-lg text-xs font-mono font-semibold"

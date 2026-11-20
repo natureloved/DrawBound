@@ -2,6 +2,15 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, beforeEach } from "vitest";
+import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { randomBytes } from "@noble/hashes/utils.js";
+import { Signer as Bip322Signer } from "bip322-js";
+import {
+  clearOwnershipChallenges,
+  deriveOwnershipAddress,
+  issueOwnershipChallenge,
+} from "@/lib/auth/ownership";
+import { privateKeyToWif } from "@/lib/wallet/key-encoding";
 
 // Isolate persistence and stay in fixture mode before importing routes.
 process.env.DATA_DIR = mkdtempSync(path.join(tmpdir(), "drawbound-hardening-"));
@@ -233,6 +242,55 @@ describe("restoring an existing position requires proof", () => {
     const second = await connect(vaultRef);
     expect(second.status).toBe(403);
     expect(JSON.stringify(second.json)).toMatch(/ownership proof or an admin token/i);
+  });
+});
+
+describe("connect route ownership proof matches the vault page's field names", () => {
+  beforeEach(() => {
+    clearOwnershipChallenges();
+  });
+
+  function makeOperator() {
+    const priv = randomBytes(32);
+    const pub = secp256k1.getPublicKey(priv, true);
+    const address = deriveOwnershipAddress(pub, "testnet");
+    return { priv, pub, address, wif: privateKeyToWif(Buffer.from(priv).toString("hex"), "testnet") };
+  }
+
+  async function connectWithProof(body: Record<string, unknown>) {
+    const kp = generateSessionKeypair();
+    return call(
+      connectPost,
+      req("/api/wallet/connect", { body: { sessionPublicKey: kp.publicKey, ...body } }),
+    );
+  }
+
+  it("accepts a valid BIP-322 proof posted with ownershipNonce, as the vault page sends it", async () => {
+    const operator = makeOperator();
+    const issued = issueOwnershipChallenge(operator.address);
+    const signature = Bip322Signer.sign(operator.wif, operator.address, issued.challenge);
+    const res = await connectWithProof({
+      vaultRef: operator.address,
+      ownershipNonce: issued.nonce,
+      ownershipAddress: operator.address,
+      ownershipSignature: signature,
+    });
+    expect(res.status).toBe(200);
+    expect(res.json.ownershipVerified).toBe(true);
+  });
+
+  it("rejects the old page shape that sent `nonce` instead of `ownershipNonce`", async () => {
+    const operator = makeOperator();
+    const issued = issueOwnershipChallenge(operator.address);
+    const signature = Bip322Signer.sign(operator.wif, operator.address, issued.challenge);
+    const res = await connectWithProof({
+      vaultRef: operator.address,
+      nonce: issued.nonce,
+      ownershipAddress: operator.address,
+      ownershipSignature: signature,
+    });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.json)).toMatch(/Incomplete ownership proof/);
   });
 });
 
