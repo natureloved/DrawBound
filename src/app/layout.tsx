@@ -99,10 +99,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0a0908" },
-    { media: "(prefers-color-scheme: light)", color: "#0a0908" },
-  ],
+  // One value, no media query: DrawBound ships a single dark palette, so the
+  // UA must never paint a light canvas (or light form controls) around it.
+  themeColor: "#0a0908",
 };
 
 export default function RootLayout({

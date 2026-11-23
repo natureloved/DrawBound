@@ -231,11 +231,12 @@ describe("authenticated API flow (fixture mode)", () => {
       clearRateLimits();
       const signer = await makeSigner("tb1pintegrationvaultstateless");
 
-      // Drop the in-memory copy WITHOUT revoking: the token must still verify
-      // through the stateless fallback (that path exists for multi-container
-      // serverless deployments and must keep working).
-      revokeSession("some-other-token-that-does-not-exist");
-      expect(getSession(signer.token)).toBeUndefined();
+      // Drop the in-memory copy WITHOUT revoking: clearSessions() wipes the
+      // map (the revocation set is empty here), so the token must still
+      // verify through the stateless fallback — that path exists for
+      // multi-container serverless deployments and must keep working.
+      clearSessions();
+      expect(getSession(signer.token)).toBeDefined();
 
       // Now revoke for real and confirm the HMAC path refuses it too — the
       // exact hole that let a disconnect be undone.
@@ -249,8 +250,13 @@ describe("authenticated API flow (fixture mode)", () => {
       clearSessions();
       clearRateLimits();
       const victim = await makeSigner("tb1pintegrationvaultvictim");
+      const bystander = await makeSigner("tb1pintegrationvaultbystander");
       revokeSession(victim.token);
       expect(getSession(victim.token)).toBeUndefined();
+
+      // Revocation is per-token now: disconnecting one session must not
+      // invalidate any other live session.
+      expect(getSession(bystander.token)).toBeDefined();
 
       // A brand-new session must be unaffected by the earlier revocation.
       const fresh = await makeSigner("tb1pintegrationvaultfresh");

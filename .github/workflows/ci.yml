@@ -52,6 +52,58 @@ jobs:
       - name: Build
         run: pnpm build
 
+  mobile-audit:
+    name: Mobile audit (real browser)
+    runs-on: ubuntu-latest
+    needs: verify
+    # Non-blocking for now: the audit still reports two known pre-existing
+    # failures (a 27px-tall vault input under the 44px touch minimum, and a
+    # tab-switcher expectation for a switcher the vault page never had). The
+    # job runs and reports them; flip this off once those are fixed.
+    continue-on-error: true
+    env:
+      LIVE_TACHI_ENABLED: "false"
+      PROOF_MODE: fixture
+      KILL_SWITCH: "true"
+      DATA_DIR: /tmp/drawbound-data
+      # The production server refuses session operations without a secret;
+      # the audit holds no session, but the server still needs one configured
+      # to boot cleanly. Throwaway value, runner-only.
+      SESSION_SECRET: "ci-mobile-audit-secret-at-least-32-chars"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: npx -y playwright@1.63 install chromium
+
+      - name: Build
+        run: pnpm build
+
+      - name: Start server
+        run: |
+          PORT=3120 pnpm start > /tmp/drawbound-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3120/api/health >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3120/api/health >/dev/null
+
+      - name: Run mobile audit
+        run: pnpm audit:mobile http://127.0.0.1:3120
+
   docker:
     name: Docker image builds
     runs-on: ubuntu-latest

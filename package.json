@@ -2,6 +2,7 @@
   "name": "drawbound",
   "version": "0.2.0",
   "private": true,
+  "license": "MIT",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "dev": "next dev",
@@ -19,7 +20,8 @@
     "live:check": "tsx scripts/live-check.mts",
     "live:build": "tsx scripts/build-transition.mts",
     "live:onboard": "tsx scripts/live-onboard.mts",
-    "oracle": "tsx scripts/hat-oracle.ts"
+    "oracle": "tsx scripts/hat-oracle.ts",
+    "audit:mobile": "node scripts/mobile-audit.mjs"
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",

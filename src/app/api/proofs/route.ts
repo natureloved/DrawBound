@@ -26,6 +26,18 @@ const kinds = ["healthy", "unhealthy", "stale", "invalid"] as const;
  *     In strict mode (PROOF_RELAY_PUBLIC_KEYS set) it must carry a valid
  *     allowlisted Schnorr signature or verification fails (422).
  */
+/**
+ * GET is not a read: refreshing a proof mutates position state, so the route
+ * is POST-only. Answer explicitly instead of Next's bare 405, so a demo
+ * caller gets a usable message rather than a confusing status.
+ */
+export async function GET() {
+  return NextResponse.json(
+    { error: "Method not allowed", detail: "Use POST /api/proofs with a session token" },
+    { status: 405 },
+  );
+}
+
 export async function POST(request: Request) {
   const limited = guardRateLimit(request);
   if (limited) return limited;

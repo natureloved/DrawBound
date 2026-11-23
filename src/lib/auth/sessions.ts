@@ -49,14 +49,40 @@ const SWEEP_INTERVAL_MS = 60_000;
 // re-admits a token whose HMAC still verifies when the in-memory map misses
 // (multi-container serverless deployments), and that same fallback silently
 // re-admitted REVOKED tokens — so `POST /api/wallet/disconnect` had no effect
-// on a token that had ever left this process. Tokens therefore carry the epoch
-// they were minted in; revoking a token advances the epoch, and every token
-// from an older epoch is refused everywhere, including the HMAC fallback.
-// Consequence to keep in mind: one revocation invalidates all other live
-// sessions. That is the correct trade for a self-custodial vault app (the
-// browser reconnects automatically with its stored keypair), and it is far
-// better than a disconnect that does not disconnect.
-let sessionEpoch = 0;
+// on a token that had ever left this process.
+//
+// Revocation is therefore per-token, not a global epoch: disconnecting one
+// session used to advance a single shared epoch and invalidate every other
+// live session (any user clicking "Disconnect" was a denial-of-service on all
+// other sessions). Revoked token ids are kept as SHA-256 fingerprints mapped
+// to their expiry, and both the map path and the HMAC fallback refuse them.
+//
+// Honest limit: this set lives in process memory, so it is enforced by the
+// container that saw the disconnect. A different serverless container can
+// still re-admit a revoked token through the stateless fallback until it
+// expires (sessions are short-lived; default 12h). Cross-container
+// revocation needs a shared store (Redis / signed-cookie sessions) — see
+// docs/deployment.md.
+const revokedTokens = new Map<string, number>();
+
+// Tokens still carry the epoch they were minted in (payload shape is stable),
+// but the epoch is no longer advanced: it stays 0 and the check below is a
+// no-op guard for any token minted before this change.
+const sessionEpoch = 0;
+
+function revokedFingerprint(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+function isRevoked(token: string): boolean {
+  const expiresAt = revokedTokens.get(revokedFingerprint(token));
+  if (expiresAt === undefined) return false;
+  if (expiresAt <= Date.now()) {
+    revokedTokens.delete(revokedFingerprint(token));
+    return false;
+  }
+  return true;
+}
 
 function sweepExpiredSessions(now = Date.now()): void {
   if (now - lastSweepAt < SWEEP_INTERVAL_MS) return;
@@ -69,12 +95,40 @@ function sweepExpiredSessions(now = Date.now()): void {
     const ordered = [...sessions.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt);
     for (const [token] of ordered.slice(0, sessions.size - MAX_SESSIONS)) sessions.delete(token);
   }
+  // Prune revocation records whose tokens have expired anyway.
+  for (const [fingerprint, expiresAt] of revokedTokens) {
+    if (expiresAt <= now) revokedTokens.delete(fingerprint);
+  }
 }
 
-const SESSION_SECRET =
-  process.env.ADMIN_TOKEN?.trim() ||
-  process.env.SESSION_SECRET?.trim() ||
-  "drawbound-session-v1-secret-key-fallback";
+/**
+ * Session-token HMAC key, resolved lazily — not at module load.
+ *
+ * - Set SESSION_SECRET (min 32 chars, validated in env.ts) per deployment.
+ * - NEVER derived from ADMIN_TOKEN: a header-presented admin token is not a
+ *   signing key, and coupling them meant rotating one silently re-keyed the
+ *   other.
+ * - Production fails closed: any attempt to sign or verify a token without a
+ *   configured secret throws instead of using a fallback, so a deployment
+ *   that sets neither can never issue a forgeable token. The check is lazy
+ *   on purpose: `next build` imports every route module to collect page data,
+ *   and a module-load throw would fail the build itself (and the CI build)
+ *   before the server ever ran. With the lazy check the build succeeds and
+ *   the failure surfaces at the first session operation, in the server log.
+ * - Non-production keeps a documented dev-only fallback so local fixture
+ *   demos and tests work without a secret on disk.
+ */
+function sessionSecret(): string {
+  const configured = env.sessionSecret();
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "SESSION_SECRET is required in production: set a unique per-deployment value of at least 32 characters " +
+        "(generate with: openssl rand -hex 32). Refusing to sign session tokens with a fallback secret.",
+    );
+  }
+  return "drawbound-session-v1-secret-key-fallback";
+}
 
 function signToken(session: Omit<Session, "token">): string {
   const payload = JSON.stringify([
@@ -89,16 +143,18 @@ function signToken(session: Omit<Session, "token">): string {
     randomBytes(12).toString("hex"),
   ]);
   const b64 = Buffer.from(payload, "utf8").toString("base64url");
-  const hmac = createHmac("sha256", SESSION_SECRET).update(b64).digest("base64url");
+  const hmac = createHmac("sha256", sessionSecret()).update(b64).digest("base64url");
   return `${b64}.${hmac}`;
 }
 
 function verifyToken(token: string): Session | undefined {
   const dot = token.indexOf(".");
   if (dot === -1) return undefined;
+  // A revoked token must not be resurrected by the stateless fallback.
+  if (isRevoked(token)) return undefined;
   const b64 = token.slice(0, dot);
   const hmac = token.slice(dot + 1);
-  const expectedHmac = createHmac("sha256", SESSION_SECRET).update(b64).digest("base64url");
+  const expectedHmac = createHmac("sha256", sessionSecret()).update(b64).digest("base64url");
   if (!safeEqual(hmac, expectedHmac)) return undefined;
 
   try {
@@ -159,6 +215,10 @@ export function createSession(input: {
 
 export function getSession(token: string | null | undefined): Session | undefined {
   if (!token) return undefined;
+  if (isRevoked(token)) {
+    sessions.delete(token);
+    return undefined;
+  }
   let session = sessions.get(token);
   if (!session) {
     // Stateless fallback: verify HMAC for requests hitting different serverless containers
@@ -183,15 +243,14 @@ export function getSession(token: string | null | undefined): Session | undefine
 
 export function revokeSession(token: string | null | undefined): boolean {
   if (!token) return false;
+  // Record this token — and only this token — as revoked, so the stateless
+  // HMAC fallback cannot re-admit it (deleting from the map alone was not
+  // enough: `getSession` re-cached any HMAC-valid token on its next
+  // presentation). Other live sessions are unaffected.
+  const session = sessions.get(token) ?? verifyToken(token);
   const deleted = sessions.delete(token);
-  // Advance the epoch so the stateless HMAC fallback cannot re-admit this token
-  // (or any other token minted before now). Deleting from the map alone was not
-  // enough: `getSession` re-cached any HMAC-valid token on its next presentation.
-  sessionEpoch += 1;
-  for (const [cached, session] of sessions) {
-    if (session.epoch < sessionEpoch) sessions.delete(cached);
-  }
-  return deleted;
+  revokedTokens.set(revokedFingerprint(token), session?.expiresAt ?? Date.now());
+  return deleted || session !== undefined;
 }
 
 /** Number of live sessions (for /api/health). */
@@ -199,10 +258,10 @@ export function sessionCount(): number {
   return sessions.size;
 }
 
-/** Test helper: drop every session. Also resets the revocation epoch. */
+/** Test helper: drop every session and every revocation record. */
 export function clearSessions(): void {
   sessions.clear();
-  sessionEpoch = 0;
+  revokedTokens.clear();
 }
 
 export const SESSION_HEADER = "x-drawbound-session";

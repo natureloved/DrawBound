@@ -416,9 +416,16 @@ export default function VaultPage() {
     setTachiBusy(true);
     setTachiError(null);
     try {
-      const response = await fetch("/api/tachi/diagnostics", { cache: "no-store" });
+      const response = await fetch("/api/tachi/diagnostics", { headers: authHeaders(), cache: "no-store" });
       const data = (await response.json()) as TachiReadOnlySnapshot & { error?: string; detail?: string; readiness?: ReadinessView };
       if (!response.ok) throw new Error(data.detail ?? data.error ?? `Tachi read failed (HTTP ${response.status})`);
+      // Unauthenticated callers get a redacted subset (no node/quorum detail);
+      // keep the readiness checklist but do not render a snapshot we do not have.
+      if (!data.node) {
+        setTachiSnapshot(null);
+        setTachiReadiness(data.readiness ?? null);
+        return;
+      }
       setTachiSnapshot(data);
       setTachiReadiness(data.readiness ?? null);
     } catch (error) {
@@ -573,20 +580,20 @@ export default function VaultPage() {
           </div>
           {session ? (
             <div className="md:text-right">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Session Identity</div>
+              <div className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Session Identity</div>
               <div className="text-xs font-mono text-[var(--gold)] mt-0.5 break-all">
                 {session.vaultRef.slice(0, 14)}…{session.vaultRef.slice(-8)}
               </div>
-              <div className="text-[10px] font-mono text-[var(--text-dim)] mt-0.5">Schnorr session · key held on device</div>
+              <div className="text-[11px] font-mono text-[var(--text-dim)] mt-0.5">Schnorr session · key held on device</div>
             </div>
           ) : (
             <div className="md:text-right hidden sm:block">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Terminal Session</div>
+              <div className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Terminal Session</div>
               <div className="text-xs font-mono text-[var(--text-muted)] mt-0.5 flex items-center md:justify-end gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--gold)] inline-block opacity-75" />
                 Ready to Connect
               </div>
-              <div className="text-[10px] font-mono text-[var(--text-dim)] mt-0.5">Client-side ephemeral keypair</div>
+              <div className="text-[11px] font-mono text-[var(--text-dim)] mt-0.5">Client-side ephemeral keypair</div>
             </div>
           )}
         </div>
@@ -601,7 +608,7 @@ export default function VaultPage() {
               <div>
                 <div className="text-xs font-mono font-medium text-[var(--gold)] flex items-center gap-2">
                   <span>SATVM PROOF-BOUND CREDIT GATE</span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[rgba(95,184,120,0.15)] text-[var(--proof)] border border-[rgba(95,184,120,0.3)]">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-[rgba(95,184,120,0.15)] text-[var(--proof)] border border-[rgba(95,184,120,0.3)]">
                     ACTIVE
                   </span>
                 </div>
@@ -695,7 +702,7 @@ export default function VaultPage() {
                   </div>
                   <div>
                     <div className="text-xs text-[var(--text-muted)] mb-2 font-mono">Session public key</div>
-                    <code className="text-[10px] font-mono text-[var(--text-dim)] break-all block bg-[#090807] p-3 rounded-lg border border-[var(--border-soft)]">
+                    <code className="text-[11px] font-mono text-[var(--text-dim)] break-all block bg-[#090807] p-3 rounded-lg border border-[var(--border-soft)]">
                       {session.publicKey}
                     </code>
                   </div>
@@ -769,7 +776,7 @@ export default function VaultPage() {
                     {connecting ? (adapterMode === "live" ? "Reading On-Chain VTXOs..." : "Connecting...") : "Connect Vault →"}
                   </button>
                   {connectError && <p className="text-xs font-mono text-[var(--danger)] break-words">{connectError}</p>}
-                  <p className="text-[10px] font-mono text-[var(--text-dim)] leading-relaxed">
+                  <p className="text-[11px] font-mono text-[var(--text-dim)] leading-relaxed">
                     Connecting generates an ephemeral Schnorr keypair on this device. Every transition you authorize is signed with it;
                     the private key never leaves your browser.
                   </p>
@@ -790,7 +797,7 @@ export default function VaultPage() {
                     </div>
                     {ownershipChallenge && (
                       <div>
-                        <div className="flex justify-between items-center text-[10px] font-mono text-[var(--text-dim)] mb-1 gap-2">
+                        <div className="flex justify-between items-center text-[11px] font-mono text-[var(--text-dim)] mb-1 gap-2">
                           <span>Sign this message with the vault user key:</span>
                           <button
                             onClick={() => copyToClipboard(ownershipChallenge.challenge, "challenge")}
@@ -799,7 +806,7 @@ export default function VaultPage() {
                             {copiedKey === "challenge" ? "Copied ✓" : "Copy"}
                           </button>
                         </div>
-                        <code className="text-[10px] font-mono text-[var(--text)] break-all block bg-[#090807] p-3 rounded-lg border border-[var(--border-soft)]">
+                        <code className="text-[11px] font-mono text-[var(--text)] break-all block bg-[#090807] p-3 rounded-lg border border-[var(--border-soft)]">
                           {ownershipChallenge.challenge}
                         </code>
                       </div>
@@ -867,13 +874,13 @@ export default function VaultPage() {
               {/* Protocol Parameters Grid */}
               <div className="grid grid-cols-2 gap-3 p-4 bg-[#090807] rounded-xl border border-[var(--border-soft)] mb-5">
                 <div>
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Min Health Ratio</div>
+                  <div className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Min Health Ratio</div>
                   <div className="text-xs font-mono font-medium text-[var(--proof)] mt-1">
                     {formatHealth(position?.minHealthBps ?? 12500)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Max LTV Ceiling</div>
+                  <div className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-dim)]">Max LTV Ceiling</div>
                   <div className="text-xs font-mono font-medium text-[var(--gold)] mt-1">
                     {position?.minHealthBps ? (1000000 / position.minHealthBps).toFixed(0) + "%" : "80%"}
                   </div>
@@ -905,9 +912,11 @@ export default function VaultPage() {
 
             <div className="grid md:grid-cols-2 gap-5 mb-6">
               <div>
-                <label className="block text-xs font-mono text-[var(--text-muted)] mb-2">Draw Amount (Credit Units)</label>
+                <label htmlFor="draw-amount" className="block text-xs font-mono text-[var(--text-muted)] mb-2">Draw Amount (Credit Units)</label>
                 <div className="amount-input">
                   <input
+                    id="draw-amount"
+                    aria-label="Draw amount in credit units"
                     inputMode="numeric"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
@@ -919,7 +928,7 @@ export default function VaultPage() {
                 </div>
                 <div className="flex gap-2 mt-2.5">
                   {[50, 100, 250].map((val) => (
-                    <button key={val} onClick={() => setAmount(String(val))} className="btn-ghost px-3 py-1.5 rounded-md text-xs font-mono flex-1">
+                    <button key={val} onClick={() => setAmount(String(val))} aria-label={`Draw ${val} credit units`} className="btn-ghost px-3 py-1.5 rounded-md text-xs font-mono flex-1">
                       {val}
                     </button>
                   ))}
@@ -1002,7 +1011,7 @@ export default function VaultPage() {
                 </button>
               </div>
               {!session && (
-                <p className="text-[10px] font-mono text-[var(--text-dim)] text-center">Connect a vault to enable signed transitions.</p>
+                <p className="text-[11px] font-mono text-[var(--text-dim)] text-center">Connect a vault to enable signed transitions.</p>
               )}
             </div>
           </div>
@@ -1048,7 +1057,7 @@ export default function VaultPage() {
                           </a>
                         ) : null}
                       </div>
-                      <time className="text-[var(--text-dim)] text-[10px] whitespace-nowrap shrink-0">{formatDate(r.createdAt)}</time>
+                      <time className="text-[var(--text-dim)] text-[11px] whitespace-nowrap shrink-0">{formatDate(r.createdAt)}</time>
                     </motion.div>
                   );
                 })}

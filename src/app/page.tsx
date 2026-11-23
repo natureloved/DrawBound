@@ -275,8 +275,9 @@ export default function Home() {
 
       <SiteHeader />
 
+      <main>
       {/* HERO */}
-      <section className="relative pt-[calc(var(--safe-top)+5rem)] pb-16 sm:pt-32 lg:pt-40 lg:pb-28 overflow-hidden">
+      <section aria-label="DrawBound overview" className="relative pt-[calc(var(--safe-top)+5rem)] pb-16 sm:pt-32 lg:pt-40 lg:pb-28 overflow-hidden">
         <div className="max-w-7xl mx-auto relative z-10 px-4 sm:px-6 lg:px-10">
           <div className="grid lg:grid-cols-12 gap-10 lg:gap-8 items-center">
             {/* Left: Headline */}
@@ -320,6 +321,10 @@ export default function Home() {
                     Connect Vault &amp; Explore
                   </Link>
                 </motion.div>
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-mono text-[var(--text-muted)]">
+                  <span className="pulse-dot" />
+                  Fixture rehearsal · no real funds
+                </span>
               </motion.div>
 
               {/* Stats */}
@@ -355,23 +360,23 @@ export default function Home() {
                 <div className="relative card p-1.5 aspect-[4/5] min-h-[380px] sm:min-h-[420px]">
                   <div className="relative w-full h-full rounded-xl overflow-hidden bg-[#0c0a08] min-h-[360px] sm:min-h-[400px]">
                     <canvas ref={canvasRef} id="hero-viz" style={{ width: "100%", height: "100%", display: "block" }} />
-                    <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-[var(--text-dim)]">
-                      <span>Live · credit vs. proof</span>
+                    <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-[11px] font-mono uppercase tracking-widest text-[var(--text-dim)]">
+                      <span>Illustrative · credit vs. proof</span>
                       <span className="flex items-center gap-1.5">
                         <span className="pulse-dot" />
-                        attested
+                        simulated
                       </span>
                     </div>
                     <div className="absolute bottom-4 left-4 right-4 bg-[#0c0a08]/80 backdrop-blur-sm p-3 rounded-lg border border-[var(--border-soft)]">
                       <div className="flex items-end justify-between mb-2">
                         <div>
-                          <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-dim)]">Utilization</div>
+                          <div className="text-[11px] font-mono uppercase tracking-widest text-[var(--text-dim)]">Utilization</div>
                           <div id="utilVal" className="font-display text-2xl font-light text-[var(--gold)]">
                             42%
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-dim)]">Bound headroom</div>
+                          <div className="text-[11px] font-mono uppercase tracking-widest text-[var(--text-dim)]">Bound headroom</div>
                           <div id="headroomVal" className="font-display text-2xl font-light text-[var(--proof)]">
                             58%
                           </div>
@@ -384,6 +389,9 @@ export default function Home() {
                           style={{ width: "42%" }}
                         />
                       </div>
+                      <p className="mt-2 text-[11px] font-mono text-[var(--text-dim)] normal-case tracking-normal">
+                        Simulated sine-wave sketch — not a live position. Real positions are on /vault.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -394,7 +402,7 @@ export default function Home() {
       </section>
 
       {/* MARQUEE — duplicated once so the loop is seamless at any width. */}
-      <section className="border-y border-[var(--border-soft)] py-5 overflow-hidden bg-[var(--bg-2)]">
+      <section aria-label="Protocol statistics" className="border-y border-[var(--border-soft)] py-5 overflow-hidden bg-[var(--bg-2)]">
         <div className="marquee text-[var(--text-dim)] font-mono text-sm uppercase tracking-widest">
           {[0, 1].map((pass) =>
             MARQUEE_ITEMS.map((item) => (
@@ -407,12 +415,12 @@ export default function Home() {
       </section>
 
       {/* CONTENT — thesis, how, proof, architecture, CTA, footer (unchanged) */}
-      <section id="thesis" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
+      <section id="thesis" aria-labelledby="thesis-heading" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-5xl mx-auto">
           <div className="reveal section-label mb-8">01 / Thesis</div>
           <div className="grid lg:grid-cols-12 gap-10">
             <div className="lg:col-span-7 reveal">
-              <h2 className="headline text-[clamp(2rem,4vw,3.4rem)] mb-8">
+              <h2 id="thesis-heading" className="headline text-[clamp(2rem,4vw,3.4rem)] mb-8">
                 Credit without proof
                 <br />
                 is just <em>leverage</em> with a logo.
@@ -444,7 +452,7 @@ export default function Home() {
                 <div className="text-xs font-mono uppercase tracking-widest text-[var(--text-dim)] mb-5">
                   The core invariant
                 </div>
-                <div className="code-block p-5 mb-5">
+                <div className="code-block p-5 mb-5" tabIndex={0}>
                   <div>
                     <span className="code-comment">{"// enforced at issuance, not at audit"}</span>
                   </div>
@@ -481,11 +489,11 @@ export default function Home() {
       </section>
 
       {/* HOW IT WORKS */}
-      <section id="how" className="section-ash relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
+      <section id="how" aria-labelledby="how-heading" className="section-ash relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl mb-16">
             <div className="reveal section-label mb-6">02 / Mechanism</div>
-            <h2 className="reveal headline text-[clamp(2rem,4vw,3.4rem)] mb-6">
+            <h2 id="how-heading" className="reveal headline text-[clamp(2rem,4vw,3.4rem)] mb-6">
               Four movements.
               <br />
               One <em>bound</em> curve.
@@ -572,14 +580,14 @@ export default function Home() {
       </section>
 
       {/* PROOF MECHANISM */}
-      <section id="proof" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
+      <section id="proof" aria-labelledby="proof-heading" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-start">
             {/* Left: Explanation. min-w-0 lets the column shrink below its
                 content's intrinsic width instead of forcing the grid wide. */}
             <div className="lg:col-span-6 min-w-0">
               <div className="reveal section-label mb-6">03 / The bound</div>
-              <h2 className="reveal headline text-[clamp(2rem,4vw,3.4rem)] mb-8">
+              <h2 id="proof-heading" className="reveal headline text-[clamp(2rem,4vw,3.4rem)] mb-8">
                 The proof is the <em>limit.</em>
                 <br />
                 Not the audit.
@@ -663,7 +671,7 @@ export default function Home() {
                     <div className="w-2.5 h-2.5 rounded-full bg-[var(--proof)]" />
                   </div>
                 </div>
-                <div className="code-block p-4 sm:p-5 overflow-x-auto">
+                <div className="code-block p-4 sm:p-5 overflow-x-auto" tabIndex={0} aria-label="Covenant draw gate logic, illustrative code">
                   <pre style={{ margin: 0, whiteSpace: "pre" }}>
                     <span className="code-comment">{"// DrawBound issuance: proof is the bound"}</span>
                     {"\n"}
@@ -691,6 +699,9 @@ export default function Home() {
                     {"}"}
                   </pre>
                 </div>
+                <p className="mt-3 text-xs font-mono text-[var(--text-dim)]">
+                  Illustrative Solidity sketch — the enforced gate is TypeScript in src/lib/domain/covenant.ts.
+                </p>
                 <div className="mt-5 pt-5 border-t border-[var(--border-soft)] grid grid-cols-3 gap-4 text-center">
                   <div>
                     <div className="font-mono text-xs text-[var(--text-dim)] uppercase tracking-wider mb-1">Freshness</div>
@@ -701,7 +712,7 @@ export default function Home() {
                     <div className="font-display text-lg text-[var(--proof)]">L1</div>
                   </div>
                   <div>
-                    <div className="font-mono text-xs text-[var(--text-dim)] uppercase tracking-wider mb-1">Trust</div>
+                    <div className="font-mono text-xs text-[var(--text-dim)] uppercase tracking-wider mb-1">Custodians</div>
                     <div className="font-display text-lg text-[var(--cool)]">0</div>
                   </div>
                 </div>
@@ -712,11 +723,11 @@ export default function Home() {
       </section>
 
       {/* PROPERTIES */}
-      <section className="section-ash relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
+      <section aria-labelledby="properties-heading" className="section-ash relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl mb-16">
             <div className="reveal section-label mb-6">04 / Properties</div>
-            <h2 className="reveal headline text-[clamp(2rem,4vw,3.4rem)] mb-6">
+            <h2 id="properties-heading" className="reveal headline text-[clamp(2rem,4vw,3.4rem)] mb-6">
               What you get when
               <br />
               proof is the <em>structure</em>.
@@ -813,11 +824,11 @@ export default function Home() {
       </section>
 
       {/* ARCHITECTURE */}
-      <section id="architecture" className="relative py-16 lg:py-28 px-4 sm:px-6 lg:px-10 scroll-mt-20">
+      <section id="architecture" aria-labelledby="architecture-heading" className="relative py-16 lg:py-28 px-4 sm:px-6 lg:px-10 scroll-mt-20">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl mb-12">
             <div className="reveal section-label mb-6">05 / Architecture</div>
-            <h2 className="reveal headline text-[clamp(2rem,4vw,3.4rem)] mb-6">
+            <h2 id="architecture-heading" className="reveal headline text-[clamp(2rem,4vw,3.4rem)] mb-6">
               Three layers.
               <br />
               One <em>source of truth</em>.
@@ -848,10 +859,10 @@ export default function Home() {
                     Bitcoin&apos;s finality.
                   </p>
                   <div className="flex flex-wrap gap-2 justify-center lg:justify-start">
-                    <span className="text-[10px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
+                    <span className="text-[11px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
                       VAULT
                     </span>
-                    <span className="text-[10px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
+                    <span className="text-[11px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
                       SETTLE
                     </span>
                   </div>
@@ -859,7 +870,7 @@ export default function Home() {
 
                 {/* Arrow 1 */}
                 <div className="hidden lg:flex flex-col items-center justify-center px-2">
-                  <span className="text-[10px] font-mono text-[var(--proof)] mb-1">prove</span>
+                  <span className="text-[11px] font-mono text-[var(--proof)] mb-1">prove</span>
                   <svg width="36" height="14" viewBox="0 0 36 14" fill="none">
                     <path d="M0 7H32M26 1L32 7L26 13" stroke="#5fb878" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -886,10 +897,10 @@ export default function Home() {
                     execution layer consumes it.
                   </p>
                   <div className="flex flex-wrap gap-2 justify-center lg:justify-start">
-                    <span className="text-[10px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
+                    <span className="text-[11px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
                       ATTEST
                     </span>
-                    <span className="text-[10px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
+                    <span className="text-[11px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
                       BOUND
                     </span>
                   </div>
@@ -897,7 +908,7 @@ export default function Home() {
 
                 {/* Arrow 2 */}
                 <div className="hidden lg:flex flex-col items-center justify-center px-2">
-                  <span className="text-[10px] font-mono text-[var(--cool)] mb-1">bound</span>
+                  <span className="text-[11px] font-mono text-[var(--cool)] mb-1">bound</span>
                   <svg width="36" height="14" viewBox="0 0 36 14" fill="none">
                     <path d="M0 7H32M26 1L32 7L26 13" stroke="#6b9eff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -924,10 +935,10 @@ export default function Home() {
                     never beyond.
                   </p>
                   <div className="flex flex-wrap gap-2 justify-center lg:justify-start">
-                    <span className="text-[10px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
+                    <span className="text-[11px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
                       DRAW
                     </span>
-                    <span className="text-[10px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
+                    <span className="text-[11px] font-mono px-2 py-1 rounded bg-[var(--surface-2)] text-[var(--text-dim)] border border-[var(--border-soft)]">
                       REPAY
                     </span>
                   </div>
@@ -947,7 +958,7 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section id="cta" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10 overflow-hidden scroll-mt-20">
+      <section id="cta" aria-labelledby="cta-heading" className="relative py-16 sm:py-24 lg:py-36 px-4 sm:px-6 lg:px-10 overflow-hidden scroll-mt-20">
         <div
           className="ambient-glow"
           style={{
@@ -963,7 +974,7 @@ export default function Home() {
           <div className="reveal section-label justify-center mb-8" style={{ display: "inline-flex" }}>
             06 / Get involved
           </div>
-          <h2 className="reveal headline text-[clamp(2.2rem,5vw,4rem)] mb-7">
+          <h2 id="cta-heading" className="reveal headline text-[clamp(2.2rem,5vw,4rem)] mb-7">
             Build credit that <em>provably</em>
             <br />
             cannot outrun its backing.
@@ -996,6 +1007,7 @@ export default function Home() {
           </div>
         </div>
       </section>
+      </main>
 
       {/* FOOTER */}
       <footer className="border-t border-[var(--border-soft)] py-12 px-6 lg:px-10 bg-[var(--bg-2)]">

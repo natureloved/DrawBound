@@ -73,10 +73,31 @@ Sessions and rate-limit buckets are in-memory; a restart invalidates sessions (b
 
 Serverless deployments remain unsupported (no durable local disk, ephemeral memory).
 
+### The hosted demo is ephemeral — say so, don't discover it live
+
+The public Vercel deployment (drawbound-eight.vercel.app) runs serverless, so
+positions, receipts and sessions live in per-container memory or a local file
+that does not survive a container restart. Consequences an operator or a judge
+will hit in practice:
+
+- A position created on one request can be gone minutes later, and two
+  consecutive reads can disagree (e.g. `/api/health` reporting
+  `counts.positions: 1` while `/api/positions` returns `[]`) because each hit
+  may land on a different container.
+- Sessions are in-memory too: a restart invalidates them and the browser
+  reconnects automatically.
+- `uptimeSec` was removed from `/api/health` for the same reason — it was
+  always 0 on serverless.
+
+For a durable demo, run the Docker image (or Fly, see `fly.toml`) with a
+volume mounted at `DATA_DIR` and `DB_BACKEND=sqlite`; Postgres is the next
+step beyond single-node file storage (reimplement `StorageBackend` once).
+
 ## Production hardening checklist
 
 Before exposing DrawBound publicly:
 
+0. **Session secret**: set a unique `SESSION_SECRET` (min 32 chars, `openssl rand -hex 32`) per deployment. Without it, production refuses every session operation (sign/verify throws) rather than signing tokens with a fallback constant — the site builds and serves public pages, but no vault can connect. Never derive it from `ADMIN_TOKEN`, and rotate it independently.
 1. **Storage**: switch to `DB_BACKEND=sqlite`; add backups for the store (receipts are the audit trail). Postgres is the next step beyond single-node file storage (reimplement `StorageBackend` once).
 2. **Ownership proofs**: enable `REQUIRE_OWNERSHIP_PROOF=true` so every connected P2TR vault comes with a BIP-322 proof of key control. For a fully trustless binding, derive the vault address and ownership address from the same key via `scripts/operator-live.mts derive`.
 3. **Strict proofs**: run the reference oracle (`ORACLE_PRIVATE_KEY=... pnpm oracle`), point `HAT_ORACLE_URL` at it, put its x-only key in `PROOF_RELAY_PUBLIC_KEYS`, and rotate that key on a schedule. Draws then verify signed attestations instead of trusting server self-computation.

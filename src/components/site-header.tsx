@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TAP_SPRING } from "./motion";
 import { LogoMark } from "./logo-mark";
 
@@ -21,6 +21,9 @@ const NAV_ITEMS = [
  *   (`AnimatePresence`), so its links are never tabbable while hidden.
  * - `body` scroll is locked while the drawer is open; without it, a finger
  *   swipe scrolls the page behind the overlay instead of closing it.
+ * - Focus is trapped inside the drawer while it is open (Tab cycles, Escape
+ *   closes, focus returns to the toggle) — without it, keyboard users tab
+ *   into the page behind the overlay.
  * - `active` is derived from scroll position, so the highlighted item tracks
  *   the section you are actually reading.
  */
@@ -28,6 +31,8 @@ export function MobileNav({ ctaHref = "/vault", ctaLabel = "Open Vault Terminal"
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string>("");
   const reduced = useReducedMotion();
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
 
   // Scroll-lock while the drawer is open.
   useEffect(() => {
@@ -39,14 +44,44 @@ export function MobileNav({ ctaHref = "/vault", ctaLabel = "Open Vault Terminal"
     };
   }, [open]);
 
-  // Close on Escape — the Android back gesture also triggers it on many devices.
+  // Focus trap while the drawer is open, plus Escape to close (the Android
+  // back gesture also triggers it on many devices). Tab cycles inside the
+  // drawer; closing returns focus to the toggle that opened it.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const toggle = toggleRef.current;
+    const focusables = (): HTMLElement[] => {
+      const drawer = drawerRef.current;
+      if (!drawer) return [];
+      return Array.from(drawer.querySelectorAll<HTMLElement>("a[href], button:not([disabled])")).filter(
+        (el) => el.offsetParent !== null,
+      );
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    focusables()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      (previouslyFocused ?? toggle)?.focus();
+    };
   }, [open]);
 
   // Track the section in view to mark the nav item.
@@ -73,6 +108,7 @@ export function MobileNav({ ctaHref = "/vault", ctaLabel = "Open Vault Terminal"
     <>
       <button
         type="button"
+        ref={toggleRef}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="mobile-drawer"
@@ -112,6 +148,7 @@ export function MobileNav({ ctaHref = "/vault", ctaLabel = "Open Vault Terminal"
             <motion.nav
               id="mobile-drawer"
               key="drawer"
+              ref={drawerRef}
               aria-label="Main navigation"
               className="fixed inset-x-0 top-0 z-[61] md:hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
               initial={reduced ? { opacity: 0 } : { y: "-100%" }}

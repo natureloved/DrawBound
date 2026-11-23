@@ -148,7 +148,7 @@ Two interchangeable backends behind one `StorageBackend` interface, chosen with 
 - `json` (default) — atomic serialized JSON-file writes at `DATA_DIR/drawbound.json`; single instance.
 - `sqlite` — Node 24's built-in `node:sqlite` (zero dependencies), WAL journal, transactional, indexed receipts; auto-imports an existing JSON store on first open and archives it.
 
-All writes are awaited before a decision is returned. See [docs/deployment.md](docs/deployment.md) for Docker, CI, environment reference, and the production hardening checklist; [docs/credit-economics.md](docs/credit-economics.md) records the credit-model decisions (unit definition, lender stance, zero interest, freeze-only risk policy).
+All writes are awaited before a decision is returned. The public Vercel deployment is ephemeral — positions, receipts and sessions live in per-container memory and can reset or disagree between requests; run the Docker image or Fly with a volume (and `DB_BACKEND=sqlite`) for a durable demo. See [docs/deployment.md](docs/deployment.md) for Docker, CI, environment reference, and the production hardening checklist; [docs/credit-economics.md](docs/credit-economics.md) records the credit-model decisions (unit definition, lender stance, zero interest, freeze-only risk policy).
 
 ## Documentation
 

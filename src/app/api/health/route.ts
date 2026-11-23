@@ -7,8 +7,6 @@ import { sessionCount } from "@/lib/auth/sessions";
 
 export const dynamic = "force-dynamic";
 
-const startedAt = Date.now();
-
 /** Liveness/readiness probe for orchestrators and uptime checks. */
 export async function GET() {
   const positions = await listPositions();
@@ -42,7 +40,9 @@ export async function GET() {
         positions: positions.length,
         sessions: sessionCount(),
       },
-      uptimeSec: Math.round((Date.now() - startedAt) / 1000),
+      // No uptimeSec: it was always 0 on serverless (each invocation is a
+      // fresh process), and a permanently-zero health metric trains people to
+      // ignore the endpoint. Uptime belongs to the host's own monitoring.
     },
     { headers: { "cache-control": "no-store" } },
   );

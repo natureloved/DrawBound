@@ -55,6 +55,11 @@ const envSchema = z.object({
   MIN_HEALTH_BPS: z.coerce.number().int().positive().default(12500),
   PROOF_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(300),
   SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(720),
+  // Session-token HMAC key. Empty means "unset": fine for local dev/tests
+  // (a documented dev-only fallback applies), but production refuses to boot
+  // without it — see sessions.ts. A short value is a misconfiguration, not a
+  // secret, so anything under 32 characters fails validation.
+  SESSION_SECRET: z.union([z.string().min(32), z.literal("")]).default(""),
   // When true, connecting a P2TR vault address requires a valid BIP-322
   // ownership proof (fixture-style vault refs stay exempt).
   REQUIRE_OWNERSHIP_PROOF: z.enum(BOOL_STRINGS).default("false"),
@@ -312,6 +317,16 @@ export const env = {
   },
   adminToken(): string | undefined {
     const raw = process.env.ADMIN_TOKEN?.trim();
+    return raw ? raw : undefined;
+  },
+  /**
+   * HMAC key for session tokens. Deliberately separate from ADMIN_TOKEN: a
+   * header-presented admin token is not a signing key, and coupling them meant
+   * rotating one silently re-keyed the other. Empty when unset (validated by
+   * the schema above when a non-empty value is too short).
+   */
+  sessionSecret(): string | undefined {
+    const raw = process.env.SESSION_SECRET?.trim();
     return raw ? raw : undefined;
   },
   /**

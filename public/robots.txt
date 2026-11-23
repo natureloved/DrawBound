@@ -4,3 +4,5 @@ Allow: /
 # DrawBound is a testnet credit-gate demonstrator.
 # API routes are dynamic and session-scoped; nothing here is for indexing.
 Disallow: /api/
+
+Sitemap: https://drawbound-eight.vercel.app/sitemap.xml

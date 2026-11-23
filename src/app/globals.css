@@ -3,6 +3,9 @@
 @source "../**/*.{ts,tsx}";
 
 :root {
+  /* Single dark palette: force the UA chrome (scrollbars, form controls,
+     overscroll canvas) dark too, whatever the OS preference is. */
+  color-scheme: dark;
   --bg: #0a0908;
   --bg-2: #100e0c;
   --surface: #15130f;
@@ -16,7 +19,11 @@
   --border-ash-soft: #282a30;
   --text: #f5f1ea;
   --text-muted: #9a9189;
-  --text-dim: #5c554c;
+  /* #948c82 is 6.00:1 on #0a0908 (AA); the old #5c554c was 2.71:1 and was used
+     for real text (labels, code comments, helper text), not just decoration.
+     Hairlines/dividers that reference this token get slightly lighter too —
+     that is the acceptable trade for a single text token. */
+  --text-dim: #948c82;
   --gold: #e8a04e;
   --gold-soft: #f4c98a;
   --gold-dim: #8a6234;
@@ -246,25 +253,53 @@ body::before {
   background: linear-gradient(90deg, transparent, var(--gold));
 }
 
-/* Smooth reveal animation system */
+/* Smooth reveal animation system.
+ *
+ * Safe default: content is VISIBLE unless JavaScript has opted into the
+ * animation (ScrollReveal adds `reveal-anim` to <html> on mount). The old
+ * shape started at `opacity: 0` in CSS, so anything the observer never
+ * reached — JS off, observer unsupported, a static screenshot — stayed
+ * invisible. Now a missed observer can only skip an animation, never hide
+ * content. `prefers-reduced-motion` also forces everything visible. */
 .reveal {
-  opacity: 0;
-  transform: translateY(32px);
+  opacity: 1;
+  transform: translateY(0);
   transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), transform 0.85s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, transform;
 }
 
-.reveal.in {
+html.reveal-anim .reveal {
+  opacity: 0;
+  transform: translateY(32px);
+}
+
+html.reveal-anim .reveal.in {
   opacity: 1;
   transform: translateY(0);
 }
 
 /* Stagger reveal container */
 .reveal-stagger > * {
-  opacity: 0;
-  transform: translateY(28px);
+  opacity: 1;
+  transform: translateY(0);
   transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, transform;
+}
+
+html.reveal-anim .reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(28px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-stagger > *,
+  html.reveal-anim .reveal,
+  html.reveal-anim .reveal-stagger > * {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
 }
 
 .reveal-stagger.in > *:nth-child(1) { transition-delay: 0.04s; opacity: 1; transform: translateY(0); }
@@ -1028,7 +1063,7 @@ p a,
 
 .vault-badge {
   font-family: var(--font-jbmono), monospace;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--gold);

@@ -13,9 +13,35 @@
  * Usage: node scripts/mobile-audit.mjs [baseUrl]
  */
 import { chromium } from "playwright-core";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 
 const BASE = process.argv[2] || "http://127.0.0.1:3120";
-const CHROME = "/home/ubuntu/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
+
+/**
+ * Resolve a Chromium executable without hardcoding one machine's cache path.
+ * Precedence: CHROME_PATH env (explicit override) -> newest
+ * ~/.cache/ms-playwright/chromium-<build>/chrome-linux64/chrome -> the
+ * playwright-core lookup (omit executablePath). The old hardcoded
+ * /home/ubuntu/.cache/... path meant the script could not run anywhere else,
+ * including a GitHub runner.
+ */
+function resolveChrome() {
+  const override = process.env.CHROME_PATH;
+  if (override && override.trim()) return override.trim();
+  const cache = path.join(homedir(), ".cache", "ms-playwright");
+  if (!existsSync(cache)) return undefined;
+  const candidates = readdirSync(cache)
+    .filter((entry) => entry.startsWith("chromium-"))
+    .map((entry) => path.join(cache, entry, "chrome-linux64", "chrome"))
+    .filter((candidate) => existsSync(candidate))
+    .sort()
+    .reverse();
+  return candidates[0];
+}
+
+const CHROME = resolveChrome();
 
 const DEVICES = [
   { name: "iPhone SE", width: 375, height: 667, dsf: 2 },
@@ -35,7 +61,7 @@ function check(device, page, name, ok, detail = "") {
 }
 
 const browser = await chromium.launch({
-  executablePath: CHROME,
+  ...(CHROME ? { executablePath: CHROME } : {}),
   args: ["--no-sandbox", "--disable-gpu", "--force-device-scale-factor=1"],
 });
 
@@ -151,6 +177,9 @@ for (const device of DEVICES) {
       // positioned decoration (ambient glows, marquee track) and fixed chrome
       // (the header spans the window) do not count: they are off-canvas by
       // design and clipped by an ancestor, so they cannot push content.
+      // Neither do descendants of a scroll container (e.g. spans inside a
+      // horizontally scrolling code block): they are clipped by design, and
+      // the `wide` check above already exempts them the same way.
       let realOverflow = false;
       for (const el of Array.from(document.querySelectorAll("body *"))) {
         const r = el.getBoundingClientRect();
@@ -160,6 +189,7 @@ for (const device of DEVICES) {
         if (el.closest("header.fixed, .fixed, .nav-blur")) continue;
         if (el.classList.contains("ambient-glow")) continue;
         if (el.closest(".marquee")) continue;
+        if (el.closest(".overflow-hidden, .overflow-x-auto, .overflow-y-auto, .overflow-clip")) continue;
         realOverflow = true;
         break;
       }

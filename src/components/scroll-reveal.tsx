@@ -5,9 +5,12 @@ import { useEffect } from "react";
 /**
  * Scroll-reveal driver for `.reveal` / `.reveal-stagger` elements.
  *
- * The CSS for these classes starts at `opacity: 0`, so something MUST add the
- * `in` class or the content stays invisible. Mount this once at the app root;
- * it observes every `.reveal` element currently on the page.
+ * The CSS for these classes starts VISIBLE; this driver opts into the
+ * animation by adding `reveal-anim` to <html>, then adds `in` as elements
+ * scroll into view. If this never runs (JS off, observer unsupported,
+ * reduced motion), content simply stays visible instead of stuck invisible.
+ * Mount this once at the app root; it observes every `.reveal` element
+ * currently on the page.
  *
  * Motion's `<Reveal>` component is preferred for new UI (it is spring-driven
  * and reduced-motion aware), but the landing page's long-form content still
@@ -15,11 +18,12 @@ import { useEffect } from "react";
  */
 export function ScrollReveal() {
   useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") {
-      // No observer support: show everything rather than leaving it hidden.
-      document.querySelectorAll(".reveal, .reveal-stagger").forEach((el) => el.classList.add("in"));
-      return;
-    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (typeof IntersectionObserver === "undefined") return;
+
+    // Opt into the hidden-starting-state animation only now that JS is
+    // running and an observer exists to finish it.
+    document.documentElement.classList.add("reveal-anim");
 
     const observer = new IntersectionObserver(
       (entries) => {
